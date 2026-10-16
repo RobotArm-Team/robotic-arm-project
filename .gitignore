@@ -211,6 +211,17 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# Project runtime data and private assets (keep documented, versioned samples elsewhere)
+data/raw/
+data/private/
+artifacts/
+models/*.pt
+models/*.onnx
+*.bag
+calibration/local/
+*.key
+*.pem
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

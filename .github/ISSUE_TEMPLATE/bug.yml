@@ -1,0 +1,35 @@
+name: 缺陷或安全问题
+description: 记录可复现的软件、接口、硬件联调或安全问题
+title: "[BUG] "
+labels: ["bug", "triage"]
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: 实际现象
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤与环境
+      placeholder: 包括版本、设备状态、task_id、时间和必要日志。
+    validations:
+      required: true
+  - type: dropdown
+    id: safety
+    attributes:
+      label: 是否涉及安全
+      options: [否, 是：已停止真机操作, 是：请立即停止真机操作]
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 日志或证据链接

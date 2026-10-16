@@ -1,0 +1,251 @@
+openapi: 3.0.3
+info:
+  title: 智能机械臂垃圾分拣管理 API
+  version: 0.1.0
+  description: |
+    Web 看板与事件服务之间的 HTTP 契约。此文件是接口字段、单位和错误码的唯一来源。
+    机械臂动作仍须经过 ROS2 控制层的工作区、角度、急停与故障校验。
+servers:
+  - url: /api/v1
+    description: 部署环境根路径
+tags:
+  - name: system
+  - name: tasks
+  - name: events
+  - name: statistics
+  - name: safety
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: 查询系统及机械臂安全状态
+      operationId: getHealth
+      responses:
+        '200':
+          description: 系统状态
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HealthStatus'}
+  /tasks:
+    post:
+      tags: [tasks]
+      summary: 创建分拣任务
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PickTask'}
+      responses:
+        '202':
+          description: 任务已接收或幂等地返回已有任务
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TaskAccepted'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/SafetyRejected'}
+  /tasks/{taskId}:
+    get:
+      tags: [tasks]
+      summary: 查询任务执行结果
+      operationId: getTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: 任务详情
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PickResult'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /events:
+    get:
+      tags: [events]
+      summary: 查询分拣与异常事件
+      operationId: listEvents
+      parameters:
+        - in: query
+          name: task_id
+          schema: {type: string}
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [RECEIVED, REJECTED, EXECUTING, RETRYING, SUCCEEDED, FAILED, SAFE_MODE]
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 按时间倒序的事件列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/SortEvent'}
+  /statistics/summary:
+    get:
+      tags: [statistics]
+      summary: 查询看板总览统计
+      operationId: getStatisticsSummary
+      responses:
+        '200':
+          description: 聚合统计
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatisticsSummary'}
+  /safety/stop:
+    post:
+      tags: [safety]
+      summary: 请求进入安全停止状态
+      description: 仅作为软件安全停止请求；现场 K2 急停拥有更高优先级。
+      operationId: requestSafetyStop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 1}
+      responses:
+        '202':
+          description: 停止请求已记录并下发
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SafetyStopResult'}
+components:
+  parameters:
+    TaskId:
+      in: path
+      name: taskId
+      required: true
+      schema: {type: string}
+      description: 全局唯一的幂等任务标识。
+  responses:
+    BadRequest:
+      description: 请求字段或单位不符合契约
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
+    SafetyRejected:
+      description: 未通过工作区、角度、急停、故障或幂等安全检查
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
+    NotFound:
+      description: 未找到资源
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
+  schemas:
+    DetectionResult:
+      type: object
+      required: [frame_id, class_id, confidence, bbox_px, center_px, inference_ms]
+      properties:
+        frame_id: {type: string}
+        class_id: {type: string, description: 垃圾类别枚举值}
+        confidence: {type: number, format: float, minimum: 0, maximum: 1}
+        bbox_px: {type: array, minItems: 4, maxItems: 4, items: {type: integer}, description: '[x, y, width, height]，单位 px'}
+        center_px: {type: array, minItems: 2, maxItems: 2, items: {type: integer}, description: '[x, y]，单位 px'}
+        inference_ms: {type: number, format: float, minimum: 0, description: 推理耗时，单位 ms}
+    TargetPose:
+      type: object
+      required: [task_id, x_mm, y_mm, z_mm, calibration_id, workspace_ok]
+      properties:
+        task_id: {type: string}
+        x_mm: {type: number, format: float}
+        y_mm: {type: number, format: float}
+        z_mm: {type: number, format: float}
+        calibration_id: {type: string}
+        workspace_ok: {type: boolean}
+    PickTask:
+      type: object
+      required: [task_id, arm_id, target_pose, bin_id, timeout_ms]
+      properties:
+        task_id: {type: string, description: 全局唯一；重复提交必须幂等处理。}
+        arm_id: {type: string, enum: [arm_1]}
+        target_pose: {$ref: '#/components/schemas/TargetPose'}
+        bin_id: {type: string, description: 分类投放箱标识。}
+        timeout_ms: {type: integer, minimum: 1}
+    PickResult:
+      type: object
+      required: [task_id, status, servo_state, vision_verified, retry_count, duration_ms]
+      properties:
+        task_id: {type: string}
+        status: {type: string, enum: [RECEIVED, REJECTED, EXECUTING, RETRYING, SUCCEEDED, FAILED, SAFE_MODE]}
+        servo_state: {type: object, additionalProperties: true}
+        vision_verified: {type: boolean}
+        retry_count: {type: integer, minimum: 0, maximum: 1}
+        error_code: {type: string, nullable: true}
+        duration_ms: {type: number, format: float, minimum: 0}
+    SortEvent:
+      type: object
+      required: [event_id, task_id, status, timestamps, metrics]
+      properties:
+        event_id: {type: string}
+        task_id: {type: string}
+        class_id: {type: string, nullable: true}
+        arm_id: {type: string, nullable: true}
+        status: {type: string, enum: [RECEIVED, REJECTED, EXECUTING, RETRYING, SUCCEEDED, FAILED, SAFE_MODE]}
+        timestamps: {type: object, additionalProperties: {type: string, format: date-time}}
+        metrics: {type: object, additionalProperties: true}
+        error_code: {type: string, nullable: true}
+    VoiceCommand:
+      type: object
+      required: [command_id, text, confidence, captured_at, latency_ms]
+      properties:
+        command_id: {type: string}
+        text: {type: string, example: 帮我分类}
+        confidence: {type: number, format: float, minimum: 0, maximum: 1}
+        captured_at: {type: string, format: date-time}
+        latency_ms: {type: number, format: float, minimum: 0}
+    GestureEvent:
+      type: object
+      required: [event_id, gesture_type, confidence, captured_at, latency_ms]
+      properties:
+        event_id: {type: string}
+        gesture_type: {type: string, description: 约定手势类型，不存储原始手势图像。}
+        confidence: {type: number, format: float, minimum: 0, maximum: 1}
+        captured_at: {type: string, format: date-time}
+        latency_ms: {type: number, format: float, minimum: 0}
+    HealthStatus:
+      type: object
+      required: [status, arm_state, estop_active, fault_cleared, timestamp]
+      properties:
+        status: {type: string, enum: [READY, BUSY, SAFE_MODE, OFFLINE]}
+        arm_state: {type: string}
+        estop_active: {type: boolean}
+        fault_cleared: {type: boolean}
+        timestamp: {type: string, format: date-time}
+    TaskAccepted:
+      type: object
+      required: [task_id, status, idempotent]
+      properties:
+        task_id: {type: string}
+        status: {type: string}
+        idempotent: {type: boolean}
+    StatisticsSummary:
+      type: object
+      required: [from, to, total_tasks, success_count, failure_count, by_class]
+      properties:
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+        total_tasks: {type: integer, minimum: 0}
+        success_count: {type: integer, minimum: 0}
+        failure_count: {type: integer, minimum: 0}
+        by_class: {type: object, additionalProperties: {type: integer}}
+    SafetyStopResult:
+      type: object
+      required: [status, requested_at]
+      properties:
+        status: {type: string, enum: [STOP_REQUESTED, SAFE_MODE]}
+        requested_at: {type: string, format: date-time}
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string, example: WORKSPACE_REJECTED}
+        message: {type: string}
+        task_id: {type: string, nullable: true}

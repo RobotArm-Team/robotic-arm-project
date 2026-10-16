@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 需求或接口变更
+    url: ../../openspec/README.md
+    about: 修改验收数字、接口字段或安全规则前，先按 OpenSpec 流程提出变更。
