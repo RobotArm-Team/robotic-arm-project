@@ -1,0 +1,15 @@
+# 启用说明：请先在 GitHub Organization 中创建四个团队，或将下方占位符替换为
+# 四位成员的 GitHub 用户名，再在 main 分支保护中启用 “Require review from Code Owners”。
+# 未替换前，本文件不会自动请求审阅，避免误把不存在的账号当作审核人。
+
+# 建议团队句柄：@RobotArm-Team/team-a、@RobotArm-Team/team-b、
+# @RobotArm-Team/team-c、@RobotArm-Team/team-d。
+
+# /docs/requirements/ @RobotArm-Team/team-a
+# /docs/architecture/ @RobotArm-Team/team-a @RobotArm-Team/team-c
+# /openspec/ @RobotArm-Team/team-a
+# /src/vision/ @RobotArm-Team/team-b
+# /src/control/ @RobotArm-Team/team-c
+# /src/backend/ @RobotArm-Team/team-d @RobotArm-Team/team-a
+# /src/web/ @RobotArm-Team/team-d
+# /api/ @RobotArm-Team/team-d @RobotArm-Team/team-a

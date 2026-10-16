@@ -1,0 +1,53 @@
+name: 功能或文档任务
+description: 为需求、实现、接口、文档或集成创建可追溯任务
+title: "[TYPE] "
+labels: ["triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "请用可验收的描述填写任务。每个任务只对应一名第一负责人。"
+  - type: dropdown
+    id: type
+    attributes:
+      label: 类型
+      options: [F1 视觉识别, F2 动作分拣, F3 看板, F4 兜底, E1 手势, E2 语音, 接口, 文档, 集成]
+    validations:
+      required: true
+  - type: input
+    id: owner
+    attributes:
+      label: 第一负责人
+      placeholder: A / B / C / D
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标与范围
+      placeholder: 说明做什么、不做什么，以及关联的需求编号。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收条件
+      placeholder: 必须包含可观察结果或数字。
+    validations:
+      required: true
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: 计划交付物
+      placeholder: 文件、服务、文档、截图或记录。
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: 风险与安全影响
+      placeholder: 是否涉及工作区、舵机、急停、接口字段或个人数据？
+  - type: input
+    id: due
+    attributes:
+      label: 目标完成日期
+      placeholder: YYYY-MM-DD
