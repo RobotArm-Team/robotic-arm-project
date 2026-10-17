@@ -6,7 +6,7 @@
 USB Camera
     │ image frame
     ▼
-视觉服务（B：YOLOv8） ── DetectionResult ──► 标定/任务编排（A/C）
+视觉服务（B：YOLOv8） ── DetectionResult ──► 标定/任务编排（B/C）
                                                 │ TargetPose / PickTask
                                                 ▼
                                           ROS2 控制层（C）
@@ -15,7 +15,7 @@ USB Camera
 事件服务与数据库（D） ── SortEvent ──► Web 看板（D）
 
 手势服务（A） ── GestureEvent ─┐
-语音服务（D） ── VoiceCommand ─┼──► 任务编排与安全门禁
+语音服务（A） ── VoiceCommand ─┼──► 任务编排与安全门禁
                               └──► 仅能触发受限、可审计动作
 ```
 
@@ -24,12 +24,12 @@ USB Camera
 | 模块 | 负责人 | 输入 | 输出 | 不承担的职责 |
 |---|---|---|---|---|
 | 视觉服务 | B | 摄像头帧 | `DetectionResult` | 不直接驱动舵机。 |
-| 标定/任务编排 | A、C | 识别结果、标定参数 | `TargetPose`、`PickTask` | 不绕过控制层安全门禁。 |
+| 标定/任务编排 | B、C | 识别结果、标定参数 | `TargetPose`、`PickTask` | 不绕过控制层安全门禁。 |
 | ROS2 控制层 | C | `PickTask` | `PickResult` | 不决定垃圾类别。 |
 | 事件服务与数据库 | D | 任务/执行结果 | `SortEvent`、查询接口 | 不伪造执行记录。 |
 | Web 看板 | D | OpenAPI HTTP 接口 | 可视化与人工安全操作 | 不直接写串口或舵机指令。 |
 | 手势互动 | A | 摄像头帧 | `GestureEvent` | 仅触发预设安全动作。 |
-| 语音控制 | D | 音频 | `VoiceCommand` | 低置信度时不得触发分拣。 |
+| 语音控制 | A | 音频 | `VoiceCommand` | 低置信度时不得触发分拣。 |
 
 ## 必经安全状态机
 

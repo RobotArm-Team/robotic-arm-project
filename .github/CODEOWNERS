@@ -6,10 +6,10 @@
 # @RobotArm-Team/team-c、@RobotArm-Team/team-d。
 
 # /docs/requirements/ @RobotArm-Team/team-a
-# /docs/architecture/ @RobotArm-Team/team-a @RobotArm-Team/team-c
-# /openspec/ @RobotArm-Team/team-a
+# /docs/architecture/ @RobotArm-Team/team-b @RobotArm-Team/team-c
+# /openspec/ @RobotArm-Team/team-b
 # /src/vision/ @RobotArm-Team/team-b
 # /src/control/ @RobotArm-Team/team-c
-# /src/backend/ @RobotArm-Team/team-d @RobotArm-Team/team-a
+# /src/backend/ @RobotArm-Team/team-d
 # /src/web/ @RobotArm-Team/team-d
-# /api/ @RobotArm-Team/team-d @RobotArm-Team/team-a
+# /api/ @RobotArm-Team/team-d @RobotArm-Team/team-b

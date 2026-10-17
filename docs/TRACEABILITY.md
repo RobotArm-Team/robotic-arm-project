@@ -9,9 +9,9 @@
 | F3 管理看板 | D | 待创建：`F3-dashboard` | 事件服务、数据库模型、4 页看板 | 实施后补齐 |
 | F4 兜底机制 | D / C | 待创建：`F4-fallback` | 错误码、异常日志、安全状态处理 | 实施后补齐 |
 | E1 手势互动 | A | 待创建：`E1-gesture` | 手势模型、触发策略、安全区动作 | 实施后补齐 |
-| E2 语音控制 | D | 待创建：`E2-voice` | 语音服务、命令事件、误触发记录 | 实施后补齐 |
-| 接口契约 | D / A | 待创建：`API-contract` | `api/openapi.yaml`、Swagger 页面 | `api/openapi.yaml` |
-| 集成与发布 | A | 待创建：`integration-release` | 集成脚本、版本 tag、验收材料 | 实施后补齐 |
+| E2 语音控制 | A | 待创建：`E2-voice` | 语音服务、命令事件、误触发记录 | 实施后补齐 |
+| 接口契约 | D / B | 待创建：`API-contract` | `api/openapi.yaml`、Swagger 页面 | `api/openapi.yaml` |
+| 集成与发布 | B | 待创建：`integration-release` | 集成脚本、版本 tag、验收材料 | 实施后补齐 |
 
 ## 使用规则
 

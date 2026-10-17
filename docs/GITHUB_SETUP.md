@@ -8,10 +8,10 @@
 
 | 团队 | 对应 PPT 职责 |
 |---|---|
-| `team-a` | A：需求基线、架构、集成、Git、E1 手势。 |
-| `team-b` | B：F1 视觉、数据、YOLOv8、部署。 |
+| `team-a` | A：E1 手势、E2 语音、数据抽检、系统测试与验收。 |
+| `team-b` | B：F1 视觉、数据、YOLOv8、部署、总体集成与发布。 |
 | `team-c` | C：F2、ROS2、Arm_Lib、安全边界。 |
-| `team-d` | D：F3、F4、Web、语音、自动化测试。 |
+| `team-d` | D：F3 全栈、F4、Web、自动化测试。 |
 
 随后将 `.github/CODEOWNERS` 中的注释行去掉。若不创建 GitHub Team，则把相应位置改成真实的 GitHub 用户名，例如 `@username`。
 
@@ -60,9 +60,9 @@
 | `[F3] 事件服务与四页 Web 看板` | D | `F3`, `D` | M1 |
 | `[F4] 错误码、降级状态与异常日志` | D | `F4`, `safety`, `D` | M2 |
 | `[E1] 手势互动与安全区动作` | A | `E1`, `safety`, `A` | M2 |
-| `[E2] 语音命令与低置信度拒绝` | D | `E2`, `D` | M2 |
+| `[E2] 语音命令与低置信度拒绝` | A | `E2`, `A` | M2 |
 | `[API] 实现并维护 OpenAPI 契约` | D | `api`, `D` | M1 |
-| `[INT] 集成、版本标签与验收材料` | A | `integration`, `A` | M3 |
+| `[INT] 集成、版本标签与验收材料` | B | `integration`, `B` | M3 |
 
 ## 5. GitHub Project
 
