@@ -1,0 +1,2245 @@
+Arm_learning
+#!/usr/bin/env python3
+#coding=utf-8
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+time.sleep(1)
+Arm.Arm_Button_Mode(1)
+Arm.Arm_Action_Study()
+Arm.Arm_Button_Mode(0)
+num = Arm_Read_Action_Num()
+print(num)
+num = Arm.Read_Action_Num()
+print(num)
+num = Arm.Arm_Read_Action_Num()
+print(num)
+Arm.Arm_Action_Mode(1)
+Arm.Arm_Action_Mode(2)
+Arm.Arm_Action_Mode(0)
+Arm.Arm_Clear_Action()
+del Arm
+
+build
+#!/usr/bin/env python3
+#coding=utf-8
+import time
+from Arm_Lib import Arm_Device
+# 获取机械臂对象
+Arm = Arm_Device()
+time.sleep(.1)
+def arm_clamp_block(enable):
+    if enable == 0:
+        # enable=0：夹爪张开（舵机6角度60，耗时400ms）
+        Arm.Arm_serial_servo_write(6, 60, 400)
+    else:
+        # enable=1：夹爪夹紧（舵机6角度135，耗时400ms）
+        Arm.Arm_serial_servo_write(6, 150, 400)
+time.sleep(.5)
+def arm_move(p, s_time = 500):
+    for i in range(5):
+        id = i + 1
+        if id == 5:
+            time.sleep(.1)
+            Arm.Arm_serial_servo_write(id, p[i], int(s_time*1.2))
+        else :
+            Arm.Arm_serial_servo_write(id, p[i], s_time)
+        time.sleep(.01)
+time.sleep(s_time/1000)
+def arm_move_up():
+    Arm.Arm_serial_servo_write(2, 90, 1500)
+    Arm.Arm_serial_servo_write(3, 90, 1500)
+    Arm.Arm_serial_servo_write(4, 90, 1500)
+time.sleep(.1)
+p_mould = [90, 130, 0, 0, 90]
+p_top = [90, 80, 60, 50, 270]
+p_Brown = [90, 53, 30, 36, 270]
+
+p_Yellow = [64, 23, 68, 56, 270]
+p_Red = [114, 22, 66, 56, 270]
+
+p_Green = [134, 65, 20, 29, 270]
+p_Blue = [44, 65, 20, 28, 270]
+p_Brown_yellow = [90, 63, 50, 22, 270]   # 顶层黄色积木
+p_Brown_red    = [90, 80, 30, 26, 270]   # 第二层红色积木
+p_Brown_green  = [90, 58, 45, 21, 270]   # 第三层绿色积木
+p_Brown_blue   = [90, 50, 45, 25, 270]   # 底层蓝色积木
+arm_clamp_block(0)
+arm_move(p_mould, 1000)
+time.sleep(1)
+arm_move(p_top, 1000)
+arm_move(p_Brown_yellow, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Yellow, 1000)
+arm_clamp_block(0)
+time.sleep(1)
+arm_move(p_top, 1000)
+arm_move(p_Brown_red, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Red, 1000)
+arm_clamp_block(0)
+time.sleep(1)
+arm_move(p_top, 1000)
+arm_move(p_Brown_green, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Green, 1000)
+arm_clamp_block(0)
+time.sleep(1)
+arm_move(p_top, 1000)
+arm_move(p_Brown_blue, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Blue, 1000)
+arm_clamp_block(0)
+time.sleep(1)
+arm_clamp_block(0)
+arm_move(p_mould, 1000)
+time.sleep(1)
+
+Clamp_blocks
+#!/usr/bin/env python3
+#coding=utf-8
+import time
+from Arm_Lib import Arm_Device
+# 获取机械臂对象
+Arm = Arm_Device()
+time.sleep(.1)
+def arm_clamp_block(enable):
+    if enable == 0:
+        # enable=0：夹爪张开（舵机6角度60，耗时400ms）
+        Arm.Arm_serial_servo_write(6, 60, 400)
+    else:
+        # enable=1：夹爪夹紧（舵机6角度135，耗时400ms）
+        Arm.Arm_serial_servo_write(6, 155, 400)
+time.sleep(.5)
+def arm_move(p, s_time = 500):
+    for i in range(5):
+        id = i + 1
+        if id == 5:
+            time.sleep(.1)
+            Arm.Arm_serial_servo_write(id, p[i], int(s_time*1.2))
+        else :
+            Arm.Arm_serial_servo_write(id, p[i], s_time)
+        time.sleep(.01)
+time.sleep(s_time/1000)
+def arm_move_up():
+    Arm.Arm_serial_servo_write(2, 90, 1500)
+    Arm.Arm_serial_servo_write(3, 90, 1500)
+    Arm.Arm_serial_servo_write(4, 90, 1500)
+time.sleep(.1)
+p_mould = [90, 130, 0, 0, 90]
+p_top = [90, 80, 60, 50, 270]
+p_Brown = [90, 53, 30, 36, 270]
+
+p_Yellow = [64, 23, 68, 56, 270]
+p_Red = [114, 22, 66, 56, 270]
+
+p_Green = [134, 65, 20, 29, 270]
+p_Blue = [44, 65, 20, 28, 270]
+arm_clamp_block(0)
+arm_move(p_mould, 1000)
+time.sleep(1)
+arm_move(p_top, 1000)
+arm_move(p_Brown, 1000)
+arm_clamp_block(1)  # 抓住积木
+
+arm_move(p_top, 1000)
+arm_move(p_Yellow, 1000)
+arm_clamp_block(0)  # 松开积木
+
+arm_move(p_mould, 1000)
+
+time.sleep(1)
+arm_move(p_top, 1000)
+arm_move(p_Brown, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Red, 1000)
+arm_clamp_block(0)
+
+arm_move_up()
+arm_move(p_mould, 1100)
+
+time.sleep(1)
+arm_move(p_top, 1000)
+arm_move(p_Brown, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Green, 1000)
+arm_clamp_block(0)
+
+arm_move_up()
+arm_move(p_mould, 1100)
+
+time.sleep(1)
+arm_move(p_top, 1000)
+arm_move(p_Brown, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Blue, 1000)
+arm_clamp_block(0)
+
+arm_move_up()
+arm_move(p_mould, 1100)
+
+time.sleep(1)
+del Arm
+
+dance
+import time
+from Arm_Lib import Arm_Device
+
+# 获取机械臂对象
+Arm = Arm_Device()
+# 定义全局延迟参数
+MOVE_DELAY = 0.5
+
+# 舞蹈动作循环
+try:
+    while True:
+        # 动作1
+        Arm.Arm_serial_servo_write6(90, 60, 60, 90, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作2
+        Arm.Arm_serial_servo_write6(90, 120, 120, 90, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作3
+        Arm.Arm_serial_servo_write6(60, 90, 90, 120, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作4
+        Arm.Arm_serial_servo_write6(120, 90, 90, 60, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+except KeyboardInterrupt:
+    # 复位舵机
+    Arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, 500)
+    time.sleep(0.5)
+    print("舞蹈程序结束，机械臂复位")
+import time
+from Arm_Lib import Arm_Device
+
+# 获取机械臂对象
+Arm = Arm_Device()
+# 全局动作延迟
+MOVE_DELAY = 0.5
+
+try:
+    while True:
+        # 动作 1
+        Arm.Arm_serial_servo_write6(90, 60, 60, 90, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 2
+        Arm.Arm_serial_servo_write6(90, 120, 120, 90, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 3
+        Arm.Arm_serial_servo_write6(60, 90, 90, 120, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 4
+        Arm.Arm_serial_servo_write6(120, 90, 90, 60, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 5
+        Arm.Arm_serial_servo_write6(90, 90, 50, 130, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 6
+        Arm.Arm_serial_servo_write6(90, 90, 130, 50, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 7
+        Arm.Arm_serial_servo_write6(70, 110, 70, 110, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 8
+        Arm.Arm_serial_servo_write6(110, 70, 110, 70, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 9
+        Arm.Arm_serial_servo_write6(90, 70, 120, 70, 60, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 10
+        Arm.Arm_serial_servo_write6(90, 120, 70, 120, 120, 90, 500)
+        time.sleep(MOVE_DELAY)
+
+except KeyboardInterrupt:
+    # 按下 Ctrl+C 停止，复位机械臂
+    Arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, 500)
+    time.sleep(0.5)
+print("舞蹈程序结束，机械臂已复位至中位")
+
+import time
+from Arm_Lib import Arm_Device
+
+# 获取机械臂对象
+Arm = Arm_Device()
+# 全局动作延迟
+MOVE_DELAY = 0.5
+
+try:
+    while True:
+        # 动作 1
+        Arm.Arm_serial_servo_write6(90, 60, 60, 90, 90, 150, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 2
+        Arm.Arm_serial_servo_write6(90, 120, 120, 90, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 3
+        Arm.Arm_serial_servo_write6(60, 90, 90, 120, 90, 150, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 4
+        Arm.Arm_serial_servo_write6(120, 90, 90, 60, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 5
+        Arm.Arm_serial_servo_write6(90, 90, 50, 130, 90, 150, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 6
+        Arm.Arm_serial_servo_write6(90, 90, 130, 50, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 7
+        Arm.Arm_serial_servo_write6(70, 110, 70, 110, 90, 150, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 8
+        Arm.Arm_serial_servo_write6(110, 70, 110, 70, 90, 90, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 9
+        Arm.Arm_serial_servo_write6(90, 70, 120, 70, 60, 150, 500)
+        time.sleep(MOVE_DELAY)
+        # 动作 10
+        Arm.Arm_serial_servo_write6(90, 120, 70, 120, 120, 90, 500)
+        time.sleep(MOVE_DELAY)
+
+except KeyboardInterrupt:
+    # 按下 Ctrl+C 停止，复位机械臂（夹爪也回到中位）
+    Arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, 500)
+    time.sleep(0.5)
+print("舞蹈程序结束，机械臂已复位至中位")
+
+dancing
+import time
+from Arm_Lib import Arm_Device
+
+# 初始化机械臂
+Arm = Arm_Device()
+MOVE_DELAY = 0.9    # 慢速，保证复杂动作走完
+MOVE_SPEED = 900    # 舵机运动毫秒时长
+
+try:
+    while True:
+        # ====================== 开场三段式鞠躬：左 / 中 / 右 ======================
+        # 预备站姿
+        Arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+
+        # 左方位鞠躬
+        Arm.Arm_serial_servo_write6(55, 112, 68, 85, 55, 70, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        Arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+
+        # 正中方位鞠躬
+        Arm.Arm_serial_servo_write6(90, 116, 63, 90, 45, 65, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        Arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+
+        # 右方位鞠躬
+        Arm.Arm_serial_servo_write6(125, 112, 68, 95, 55, 115, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        Arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+
+        # ====================== 30组复杂联动舞蹈动作 ======================
+        # 1 左上方圆弧舒展
+        Arm.Arm_serial_servo_write6(60, 55, 115, 70, 35, 55, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 2 右上方圆弧舒展
+        Arm.Arm_serial_servo_write6(120, 55, 115, 110, 35, 125, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 3 高位居中舒展
+        Arm.Arm_serial_servo_write6(90, 50, 120, 90, 30, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 4 左侧波浪下沉
+        Arm.Arm_serial_servo_write6(50, 95, 75, 75, 60, 65, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 5 右侧波浪下沉
+        Arm.Arm_serial_servo_write6(130, 95, 75, 105, 60, 115, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 6 中位俯身柔摆
+        Arm.Arm_serial_servo_write6(90, 110, 68, 90, 50, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 7 手腕左螺旋转动
+        Arm.Arm_serial_servo_write6(70, 75, 100, 55, 40, 120, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 8 手腕右螺旋转动
+        Arm.Arm_serial_servo_write6(110, 75, 100, 125, 40, 60, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 9 向前缓慢托举
+        Arm.Arm_serial_servo_write6(90, 60, 62, 85, 135, 80, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 10 向后缓缓收回
+        Arm.Arm_serial_servo_write6(90, 105, 98, 95, 35, 100, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+
+        # 11 左侧低位环绕画圆
+        Arm.Arm_serial_servo_write6(45, 90, 85, 65, 70, 110, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 12 右侧低位环绕画圆
+        Arm.Arm_serial_servo_write6(135, 90, 85, 115, 70, 70, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 13 左上斜向伸展
+        Arm.Arm_serial_servo_write6(65, 60, 110, 60, 45, 50, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 14 右下斜向伸展
+        Arm.Arm_serial_servo_write6(115, 120, 55, 120, 75, 130, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 15 右上斜向伸展
+        Arm.Arm_serial_servo_write6(115, 60, 110, 120, 45, 130, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 16 左下斜向伸展
+        Arm.Arm_serial_servo_write6(65, 120, 55, 60, 75, 50, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 17 连续柔化左波浪
+        Arm.Arm_serial_servo_write6(70, 80, 95, 70, 50, 105, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 18 连续柔化右波浪
+        Arm.Arm_serial_servo_write6(110, 80, 95, 110, 50, 75, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 19 缓慢正向抓握
+        Arm.Arm_serial_servo_write6(90, 70, 65, 90, 140, 95, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 20 缓慢反向张开
+        Arm.Arm_serial_servo_write6(90, 100, 92, 90, 35, 85, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+
+        # 21 高位左环绕
+        Arm.Arm_serial_servo_write6(55, 50, 122, 75, 40, 60, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 22 高位右环绕
+        Arm.Arm_serial_servo_write6(125, 50, 122, 105, 40, 120, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 23 中心小圆弧旋转
+        Arm.Arm_serial_servo_write6(80, 85, 90, 80, 55, 100, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 24 反向中心小圆弧旋转
+        Arm.Arm_serial_servo_write6(100, 85, 90, 100, 55, 80, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 25 低位整体柔摆
+        Arm.Arm_serial_servo_write6(75, 110, 60, 85, 65, 110, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 26 反向低位整体柔摆
+        Arm.Arm_serial_servo_write6(105, 110, 60, 95, 65, 70, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 27 中位优雅抬臂
+        Arm.Arm_serial_servo_write6(90, 65, 105, 90, 40, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 28 中位优雅落臂
+        Arm.Arm_serial_servo_write6(90, 108, 70, 90, 60, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 29 居中柔和预备姿态
+        Arm.Arm_serial_servo_write6(90, 90, 90, 90, 50, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        # 30 最终优雅定格展臂
+        Arm.Arm_serial_servo_write6(90, 72, 98, 90, 35, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+
+        # ====================== 结尾正式鞠躬收势 ======================
+        Arm.Arm_serial_servo_write6(90, 120, 60, 90, 45, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+        Arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, MOVE_SPEED)
+        time.sleep(MOVE_DELAY)
+
+except KeyboardInterrupt:
+    Arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, 900)
+    time.sleep(0.9)
+print("舞蹈结束，机械臂复位完成")
+
+Face
+import cv2 as cv
+import os
+import threading
+import ipywidgets as widgets
+from IPython.display import display
+from Arm_Lib import Arm_Device
+import Arm_Lib
+Arm = Arm_Device()
+joints_0 = [90, 135, 20, 25, 90, 30]
+Arm.Arm_serial_servo_write6_array(joints_0, 1000)
+class PositionalPID:
+    def __init__(self, P, I, D):
+        self.Kp = P
+        self.Ki = I
+        self.Kd = D
+        self.SystemOutput = 0.0
+        self.ResultValueBack = 0.0
+        self.PidOutput = 0.0
+        self.PIDErrADD = 0.0
+        self.ErrBack = 0.0
+
+    def SetStepSignal(self, StepSignal):
+        Err = StepSignal - self.SystemOutput
+        KpWork = self.Kp * Err
+        KiWork = self.Ki * self.PIDErrADD
+        KdWork = self.Kd * (Err - self.ErrBack)
+        self.PidOutput = KpWork + KiWork + KdWork
+        self.PIDErrADD += Err
+        if self.PIDErrADD > 500:
+            self.PIDErrADD = 500
+        if self.PIDErrADD < -500:
+            self.PIDErrADD = -500
+        self.ErrBack = Err
+
+    def SetInertiaTime(self, InertiaTime, SampleTime):
+        self.SystemOutput = (InertiaTime * self.ResultValueBack +
+                             SampleTime * self.PidOutput) / (SampleTime + InertiaTime)
+        self.ResultValueBack = self.SystemOutput
+class face_follow:
+
+    # 模型 URL（类级常量，不依赖外部变量）
+    _PROTOTXT_URL = ("https://raw.githubusercontent.com/opencv/opencv/"
+                     "master/samples/dnn/face_detector/deploy.prototxt")
+    _CAFFEMODEL_URL = ("https://github.com/opencv/opencv_3rdparty/raw/"
+                       "dnn_samples_face_detector_20170830/"
+                       "res10_300x300_ssd_iter_140000.caffemodel")
+
+    @staticmethod
+    def _get_model_dir():
+        """获取模型文件所在目录（Jupyter 兼容，使用当前工作目录）"""
+        import os
+        return os.getcwd()
+
+    @classmethod
+    def _ensure_model(cls, prototxt_path, caffemodel_path):
+        """自动下载 DNN 模型文件，网络不通则提示手动下载"""
+        import os
+        import urllib.request
+
+        missing = []
+        for path, url, name in [
+            (prototxt_path, cls._PROTOTXT_URL, "deploy.prototxt"),
+            (caffemodel_path, cls._CAFFEMODEL_URL,
+             "res10_300x300_ssd_iter_140000.caffemodel"),
+        ]:
+            if os.path.exists(path):
+                continue
+            print("下载 %s ..." % name)
+            try:
+                urllib.request.urlretrieve(url, path)
+                print("%s 下载完成" % name)
+            except Exception as e:
+                print("下载 %s 失败: %s" % (name, e))
+                missing.append((name, url))
+
+        if missing:
+            print("\n" + "=" * 55)
+            print("以下模型文件缺失，请手动下载后放到程序目录：")
+            for name, url in missing:
+                print("  %s\n    %s" % (name, url))
+            print("=" * 55)
+
+    def __init__(self):
+        import os
+        self.img = None
+        self.target_servox = 90
+        self.target_servoy = 45
+        self.Arm = Arm_Lib.Arm_Device()
+
+        # ===== 模型路径 =====
+        model_dir = self._get_model_dir()
+        prototxt = os.path.join(model_dir, "deploy.prototxt")
+        caffemodel = os.path.join(model_dir, "res10_300x300_ssd_iter_140000.caffemodel")
+
+        # ===== 检测模式选择 =====
+        self.detect_mode = None   # "dnn" 或 "haar"
+
+        if os.path.exists(prototxt) and os.path.exists(caffemodel):
+            # DNN 模式
+            self.net = cv.dnn.readNetFromCaffe(prototxt, caffemodel)
+            try:
+                self.net.setPreferableBackend(cv.dnn.DNN_BACKEND_OPENCV)
+                self.net.setPreferableTarget(cv.dnn.DNN_TARGET_OPENCL)
+            except Exception:
+                pass
+            self.detect_mode = "dnn"
+            print("DNN 人脸检测模型加载成功")
+        else:
+            # Haar Cascade 回退：使用当前目录下的本地文件
+            cascade_path = os.path.join(os.getcwd(), "haarcascade_frontalface_default.xml")
+            self.face_cascade = cv.CascadeClassifier(cascade_path)
+            if self.face_cascade.empty():
+                raise RuntimeError("无法加载 Haar Cascade: %s" % cascade_path)
+            self.detect_mode = "haar"
+            print("Haar Cascade 人脸检测就绪: %s" % cascade_path)
+
+        # ===== 检测置信度阈值 =====
+        self.confidence_threshold = 0.6      # DNN 正常阈值
+        self.low_confidence_threshold = 0.35 # DNN 低阈值回退
+
+        # ===== 边缘检测参数 =====
+        self.edge_margin = 15
+        self.recovery_gain_x = 50
+        self.recovery_gain_y = 40
+
+        # ===== PID 参数 =====
+        self.xservo_pid = PositionalPID(0.8, 0.08, 0.2)
+        self.yservo_pid = PositionalPID(0.8, 0.08, 0.2)
+
+        # ===== 低通滤波 =====
+        self.smooth_x = 160.0
+        self.smooth_y = 120.0
+        self.alpha = 0.4
+
+        # ===== 死区 / 限幅 =====
+        self.dead_zone = 15
+        self.max_angle_change = 6
+        self.recovery_max_angle_change = 12
+
+        self.last_target_servox = 90
+        self.last_target_servoy = 45
+
+        self.face_lost_count = 0
+        self.max_lost_frames = 15
+        self.last_face_pos = None
+        self.face_detected = False
+
+        # 帧跳过
+        self.frame_count = 0
+        self.detect_interval = 3
+        self._cached_result = None
+
+    def _extract_faces_dnn(self, detections, h, w, min_conf, min_size):
+        """从 DNN 检测结果中提取人脸框"""
+        faces = []
+        for i in range(detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            if confidence < min_conf:
+                continue
+            box = detections[0, 0, i, 3:7] * [w, h, w, h]
+            (x1, y1, x2, y2) = box.astype("int")
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            fw, fh = x2 - x1, y2 - y1
+            if fw > min_size and fh > min_size:
+                faces.append((x1, y1, fw, fh, confidence))
+        return faces
+
+    def _detect_face_dnn(self, bgr):
+        """DNN SSD 人脸检测"""
+        h, w = bgr.shape[:2]
+        blob = cv.dnn.blobFromImage(bgr, 1.0, (300, 300),
+                                     (104.0, 177.0, 123.0))
+        self.net.setInput(blob)
+        detections = self.net.forward()
+
+        faces = self._extract_faces_dnn(detections, h, w,
+                                         self.confidence_threshold, 15)
+        secondary_detect = (len(faces) == 0)
+        if secondary_detect:
+            faces = self._extract_faces_dnn(detections, h, w,
+                                             self.low_confidence_threshold, 10)
+        return faces, secondary_detect
+
+    def _detect_face_haar(self, gray):
+        """Haar Cascade 人脸检测（多轮降级策略）"""
+        faces_raw = self.face_cascade.detectMultiScale(
+            gray, scaleFactor=1.05, minNeighbors=5,
+            minSize=(30, 30), flags=cv.CASCADE_SCALE_IMAGE)
+
+        if len(faces_raw) == 0:
+            # 降级：更宽松的参数
+            faces_raw = self.face_cascade.detectMultiScale(
+                gray, scaleFactor=1.03, minNeighbors=3,
+                minSize=(20, 20), flags=cv.CASCADE_SCALE_IMAGE)
+
+        faces = []
+        for (x, y, w, h) in faces_raw:
+            confidence = min(w * h / 20000.0, 0.95)  # 估算置信度
+            faces.append((x, y, w, h, confidence))
+        return faces, False
+
+    def _check_edge_status(self, fx, fy, fw, fh, w, h):
+        """检测人脸是否贴近画面边缘（不完整人脸）"""
+        return {
+            'left':   fx <= self.edge_margin,
+            'right':  (fx + fw) >= (w - self.edge_margin),
+            'top':    fy <= self.edge_margin,
+            'bottom': (fy + fh) >= (h - self.edge_margin),
+            'any':    False  # 占位，后续更新
+        }
+
+    def detect_face(self, bgr):
+        """
+        人脸检测（DNN 或 Haar Cascade，取决于 detect_mode）
+        返回 (center_x, center_y, w, h, faces, edge_status) 或 None
+        """
+        h, w = bgr.shape[:2]
+
+        if self.detect_mode == "dnn":
+            faces, secondary_detect = self._detect_face_dnn(bgr)
+        else:
+            gray = cv.cvtColor(bgr, cv.COLOR_BGR2GRAY)
+            faces, secondary_detect = self._detect_face_haar(gray)
+
+        if len(faces) == 0:
+            self.last_face_pos = None
+            return None
+
+        # 按 面积*置信度 排序
+        faces.sort(key=lambda f: f[2] * f[3] * f[4], reverse=True)
+
+        # 时序优先：靠近上一帧位置的加权
+        if self.last_face_pos is not None and len(faces) > 1:
+            lx, ly, lw, lh = self.last_face_pos
+            lcx, lcy = lx + lw / 2, ly + lh / 2
+
+            def score(f):
+                fx, fy, fw_, fh_, conf = f
+                fcx, fcy = fx + fw_ / 2, fy + fh_ / 2
+                dist = ((fcx - lcx) ** 2 + (fcy - lcy) ** 2) ** 0.5 + 1
+                return fw_ * fh_ * conf / dist
+
+            faces.sort(key=score, reverse=True)
+
+        (fx, fy, fw, fh, conf) = faces[0]
+        center_x = fx + fw / 2
+        center_y = fy + fh / 2
+        self.last_face_pos = (fx, fy, fw, fh)
+
+        # 检测人脸是否不完整（贴边）
+        edge_status = self._check_edge_status(fx, fy, fw, fh, w, h)
+        edge_status['any'] = any([edge_status['left'], edge_status['right'],
+                                   edge_status['top'], edge_status['bottom']])
+        edge_status['secondary'] = secondary_detect
+
+        # 返回不含置信度的框
+        faces_clean = [(fx, fy, fw, fh) for (fx, fy, fw, fh, _) in faces]
+        return center_x, center_y, fw, fh, faces_clean, edge_status
+
+    def follow_function(self, img):
+        self.img = img
+        h, w = self.img.shape[:2]
+        cx, cy = w // 2, h // 2  # 画面中心
+
+        self.frame_count += 1
+        if self.frame_count % self.detect_interval == 0:
+            result = self.detect_face(self.img)
+            self._cached_result = result
+        else:
+            result = self._cached_result
+
+        if result is not None:
+            face_x, face_y, face_w, face_h, faces, edge_status = result
+            self.face_detected = True
+            self.face_lost_count = 0
+
+            # ===== 绘制人脸框 =====
+            for (fx, fy, fw, fh) in faces:
+                # 不完整人脸用橙色框，正常用绿色框
+                color = (0, 165, 255) if edge_status['any'] else (0, 255, 0)
+                thickness = 3 if edge_status['any'] else 2
+                cv.rectangle(self.img, (fx, fy), (fx + fw, fy + fh), color, thickness)
+                cv.circle(self.img, (int(fx + fw / 2), int(fy + fh / 2)),
+                          5, (0, 0, 255), -1)
+
+            # ===== 计算边缘恢复补偿 =====
+            recovery_x = 0.0
+            recovery_y = 0.0
+
+            if edge_status['left']:
+                recovery_x = self.recovery_gain_x   # 左贴边 → 目标偏右 → 摄像头左转
+            elif edge_status['right']:
+                recovery_x = -self.recovery_gain_x  # 右贴边 → 目标偏左 → 摄像头右转
+
+            if edge_status['top']:
+                recovery_y = self.recovery_gain_y   # 上贴边 → 目标偏下 → 摄像头上仰
+            elif edge_status['bottom']:
+                recovery_y = -self.recovery_gain_y  # 下贴边 → 目标偏上 → 摄像头下俯
+
+            # PID 目标点 = 画面中心 + 恢复补偿偏移
+            pid_target_x = cx + recovery_x
+            pid_target_y = cy + recovery_y
+
+            # 绘制恢复方向箭头
+            if edge_status['any']:
+                # 画面中心十字准星
+                cv.line(self.img, (cx - 15, cy), (cx + 15, cy), (0, 255, 255), 1)
+                cv.line(self.img, (cx, cy - 15), (cx, cy + 15), (0, 255, 255), 1)
+                # 从人脸中心指向恢复目标
+                pt1 = (int(face_x), int(face_y))
+                pt2 = (int(pid_target_x), int(pid_target_y))
+                cv.arrowedLine(self.img, pt1, pt2, (0, 255, 255), 2, tipLength=0.3)
+                # 文字提示
+                cv.putText(self.img, "Partial Face - Recovering", (5, 50),
+                           cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 2)
+
+            self.smooth_x = self.alpha * face_x + (1 - self.alpha) * self.smooth_x
+            self.smooth_y = self.alpha * face_y + (1 - self.alpha) * self.smooth_y
+
+            status_text = "Face Locked" if not edge_status['any'] else "Partial Face"
+            if self.detect_mode == "haar":
+                status_text += " [Haar]"
+            status_color = (0, 255, 0) if not edge_status['any'] else (0, 165, 255)
+            cv.putText(self.img, status_text, (5, 20),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
+
+            # 边缘检测二级命中提示
+            if edge_status.get('secondary'):
+                cv.putText(self.img, "Lo-Conf Detect", (5, 75),
+                           cv.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 255), 1)
+
+            # ===== X 轴 PID（含恢复偏移） =====
+            x_error = abs(self.smooth_x - pid_target_x)
+            if x_error > self.dead_zone:
+                self.xservo_pid.SystemOutput = self.smooth_x
+                self.xservo_pid.SetStepSignal(pid_target_x)
+                self.xservo_pid.SetInertiaTime(0.01, 0.1)
+                target_valuex = int(1500 + self.xservo_pid.SystemOutput)
+                target_servox_new = int((target_valuex - 500) / 10)
+                delta_x = target_servox_new - self.last_target_servox
+                # 不完整人脸时允许更大步长以便快速恢复
+                max_step = self.recovery_max_angle_change if edge_status['any'] else self.max_angle_change
+                if abs(delta_x) > max_step:
+                    delta_x = max_step if delta_x > 0 else -max_step
+                self.target_servox = self.last_target_servox + delta_x
+                self.target_servox = max(0, min(180, self.target_servox))
+
+            # ===== Y 轴 PID（含恢复偏移） =====
+            y_error = abs(self.smooth_y - pid_target_y)
+            if y_error > self.dead_zone:
+                self.yservo_pid.SystemOutput = self.smooth_y
+                self.yservo_pid.SetStepSignal(pid_target_y)
+                self.yservo_pid.SetInertiaTime(0.01, 0.1)
+                target_valuey = int(1500 + self.yservo_pid.SystemOutput)
+                target_servoy_new = int((target_valuey - 500) / 10) - 45
+                delta_y = target_servoy_new - self.last_target_servoy
+                max_step = self.recovery_max_angle_change if edge_status['any'] else self.max_angle_change
+                if abs(delta_y) > max_step:
+                    delta_y = max_step if delta_y > 0 else -max_step
+                self.target_servoy = self.last_target_servoy + delta_y
+                self.target_servoy = max(0, min(360, self.target_servoy))
+
+            self.last_target_servox = self.target_servox
+            self.last_target_servoy = self.target_servoy
+
+            joints_0 = [self.target_servox, 135, self.target_servoy / 2,
+                        self.target_servoy / 2, 90, 30]
+            self.Arm.Arm_serial_servo_write6_array(joints_0, 1000)
+
+        else:
+            self.face_lost_count += 1
+            self.face_detected = False
+            cv.putText(self.img, "Face Lost: %d" % self.face_lost_count, (5, 20),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+
+        # ===== 绘制画面边缘警戒线 =====
+        m = self.edge_margin
+        cv.rectangle(self.img, (m, m), (w - m, h - m), (80, 80, 80), 1)
+
+        return self.img
+face_tracker = None   # 懒加载，点击 Face Follow 时才初始化
+
+model = 'General'
+
+# ===== UI =====
+button_layout = widgets.Layout(width='200px', height='80px', align_self='center')
+
+face_follow_btn = widgets.Button(description='Face Follow', button_style='success',
+                                  layout=button_layout)
+follow_cancel = widgets.Button(description='Stop Follow', button_style='danger',
+                                layout=button_layout)
+exit_button = widgets.Button(description='Exit', button_style='danger',
+                              layout=button_layout)
+
+imgbox = widgets.Image(format='jpg', height=320, width=480,
+                       layout=widgets.Layout(align_self='auto'))
+
+img_box = widgets.VBox([imgbox], layout=widgets.Layout(align_self='auto'))
+Slider_box = widgets.VBox([face_follow_btn, follow_cancel, exit_button],
+                          layout=widgets.Layout(align_self='auto'))
+controls_box = widgets.HBox([img_box, Slider_box],
+                            layout=widgets.Layout(align_self='auto'))
+def face_follow_Callback(value):
+    global model, face_tracker
+    if face_tracker is None:
+        try:
+            face_tracker = face_follow()
+        except Exception as e:
+            print("人脸追踪初始化失败: %s" % e)
+            face_tracker = None
+            return
+    model = 'face_follow'
+    print("人脸追踪已启动 (DNN SSD)")
+
+
+def follow_cancel_Callback(value):
+    global model
+    model = 'General'
+    print("追踪已取消")
+
+
+def exit_button_Callback(value):
+    global model
+    model = 'Exit'
+print("程序退出")
+face_follow_btn.on_click(face_follow_Callback)
+follow_cancel.on_click(follow_cancel_Callback)
+exit_button.on_click(exit_button_Callback)
+def camera():
+    global model
+    capture = cv.VideoCapture(0)
+    capture.set(3, 320)
+    capture.set(4, 240)
+    capture.set(5, 30)
+
+    while capture.isOpened():
+        try:
+            _, img = capture.read()
+            img = cv.resize(img, (320, 240))
+
+            if model == 'face_follow' and face_tracker is not None:
+                img = face_tracker.follow_function(img)
+
+            if model == 'Exit':
+                cv.destroyAllWindows()
+                capture.release()
+                break
+
+            imgbox.value = cv.imencode('.jpg', img,
+                                       [cv.IMWRITE_JPEG_QUALITY, 50])[1].tobytes()
+        except KeyboardInterrupt:
+            capture.release()
+devices = []
+for i in range(5):
+    cap = cv.VideoCapture(i, cv.CAP_DSHOW)
+    if cap.isOpened():
+        devices.append(i)
+        cap.release()
+print("可用设备索引:", devices)
+
+display(controls_box)
+camera_thread = threading.Thread(target=camera, daemon=True)
+camera_thread.start()
+
+face2
+import cv2
+import numpy as np
+import ipywidgets as widgets
+import threading
+import time
+from IPython.display import display, clear_output
+
+# 全局状态变量
+model = "General"
+exit_flag = False
+servo_x_angle = 90
+servo_y_angle = 90
+
+# ========== 修复后的PID（重点：增加误差重置、更强参数） ==========
+class PosPID:
+    def __init__(self, kp, ki, kd, output_min, output_max):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.output_min = output_min
+        self.output_max = output_max
+        self.integral = 0
+        self.last_error = 0
+
+    def calculate(self, setpoint, feedback):
+        # 【修复】你之前写反了！！！！
+        error = feedback - setpoint   
+
+        p = self.kp * error
+        self.integral += error
+        i = self.ki * self.integral
+        d = self.kd * (error - self.last_error)
+
+        # 防止积分累积卡死
+        if abs(error) < 5:
+            self.integral = 0
+
+        self.last_error = error
+        output = p + i + d
+        output = np.clip(output, self.output_min, self.output_max)
+        return output
+
+# 【修复】强化追踪参数，能肉眼看到追踪
+pid_x = PosPID(kp=0.4, ki=0.02, kd=0.1, output_min=-8, output_max=8)
+pid_y = PosPID(kp=0.4, ki=0.02, kd=0.1, output_min=-8, output_max=8)
+class face_follow:
+    def __init__(self):
+        # 【终极解决路径问题】使用opencv内置模型，不用上传文件
+        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades 
+                                                 + "haarcascade_frontalface_default.xml")
+
+        self.target_x = 320
+        self.target_y = 240
+
+    def face_filter(self, faces):
+        max_face = None
+        max_area = 0
+        for (x, y, w, h) in faces:
+            if w < 20 or h < 20:   # 过滤太小人脸
+                continue
+            area = w * h
+            if area > max_area:
+                max_area = area
+                max_face = (x, y, w, h)
+        return max_face
+
+    def follow_function(self, frame):
+        global servo_x_angle, servo_y_angle
+        frame = cv2.resize(frame, (640, 480))
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        faces = self.face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.2,
+            minNeighbors=4,
+            minSize=(20, 20)
+        )
+
+        target_face = self.face_filter(faces)
+        if target_face is not None:
+            x, y, w, h = target_face
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            face_cx = x + w // 2
+            face_cy = y + h // 2
+            cv2.circle(frame, (face_cx, face_cy), 4, (0, 0, 255), -1)
+
+            # 【核心修复】删除你原来错误的判断条件，人脸在画面里就持续追踪
+            delta_x = pid_x.calculate(self.target_x, face_cx)
+            servo_x_angle += delta_x
+            servo_x_angle = np.clip(servo_x_angle, 0, 180)
+
+            delta_y = pid_y.calculate(self.target_y, face_cy)
+            servo_y_angle += delta_y
+            servo_y_angle = np.clip(servo_y_angle, 0, 180)
+
+            # 打印角度变化，方便你观察是否追踪
+            print(f"X角度:{servo_x_angle:.1f}  Y角度:{servo_y_angle:.1f}")
+
+        return frame
+
+face_tracker = face_follow()
+# 图像显示控件
+img_widget = widgets.Image(format='jpeg', width=640, height=480)
+
+# 退出按钮（补全 Layout 的闭合括号！）
+exit_button = widgets.Button(
+    description="Exit", 
+    button_style='danger', 
+    layout=widgets.Layout(width='150px')
+)
+
+def exit_button_Callback(b):
+    global exit_flag, model
+    model = "Exit"
+    exit_flag = True
+
+exit_button.on_click(exit_button_Callback)
+
+# 布局
+ui = widgets.VBox([
+    img_widget,
+    widgets.HBox([exit_button], layout=widgets.Layout(justify_content='center'))
+])
+display(ui)
+def main_loop():
+    global exit_flag
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+    while not exit_flag:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame = face_tracker.follow_function(frame)
+        # 编码图像用于jupyter显示
+        _, jpg_buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        img_widget.value = jpg_buf.tobytes()
+        time.sleep(0.03)
+
+    cap.release()
+    cv2.destroyAllWindows()
+    clear_output()
+
+# 启动追踪线程
+track_thread = threading.Thread(target=main_loop, daemon=True)
+track_thread.start()
+X角度:98.0  Y角度:82.0
+X角度:106.0  Y角度:74.0
+X角度:114.0  Y角度:66.0
+X角度:122.0  Y角度:58.0
+X角度:130.0  Y角度:50.0
+X角度:138.0  Y角度:42.0
+X角度:146.0  Y角度:34.0
+X角度:154.0  Y角度:26.0
+X角度:162.0  Y角度:18.0
+X角度:170.0  Y角度:10.0
+X角度:178.0  Y角度:2.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+X角度:180.0  Y角度:0.0
+
+Read_pos
+#!/usr/bin/env python3
+#coding=utf-8
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+time.sleep(1)
+def main():
+    for i in range(6):
+        aa = Arm.Arm_serial_servo_read(i+1)
+        print(aa)
+        time.sleep(0.1)
+    time.sleep(0.5)
+    print(" END OF LINE! ")
+try:
+    main()
+except KeyboardInterrupt:
+    print(" Program closed! ")
+pass
+#!/usr/bin/env python3
+#coding=utf-8
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+time.sleep(1)
+def main():
+    for i in range(6):
+        aa = Arm.Arm_serial_servo_read(i+1)
+        print(aa)
+        time.sleep(0.1)
+    time.sleep(0.5)
+    print(" END OF LINE! ")
+try:
+    main()
+except KeyboardInterrupt:
+    print(" Program closed! ")
+pass
+#!/usr/bin/env python3
+#coding=utf-8
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+time.sleep(1)
+def main():
+    for i in range(6):
+        aa = Arm.Arm_serial_servo_read(i+1)
+        print(aa)
+        time.sleep(0.1)
+    time.sleep(0.5)
+    print(" END OF LINE! ")
+try:
+    main()
+except KeyboardInterrupt:
+    print(" Program closed! ")
+    pass
+# 控制单个舵机运动，假设控制 ID 为 1 的舵机转动到 90 度
+Arm.Arm_serial_servo_write(1, 90, 500)  
+time.sleep(1)  
+# 读取该舵机角度
+angle = Arm.Arm_serial_servo_read(1)  
+print(angle)
+id = 6
+angle = 150
+Arm.Arm_serial_servo_write(id, angle, 500)
+time.sleep(1)
+aa = Arm.Arm_serial_servo_read(id)
+print(aa)
+time.sleep(.5)
+id = 6
+angle = 50
+Arm.Arm_serial_servo_write(id, angle, 500)
+time.sleep(1)
+aa = Arm.Arm_serial_servo_read(id)
+print(aa)
+time.sleep(0.5)
+id = 6
+angle = 120
+Arm.Arm_serial_servo_write(id, angle, 500)
+time.sleep(1)
+aa = Arm.Arm_serial_servo_read(id)
+print(aa)
+time.sleep(0.5)
+id = 6
+angle = 150
+Arm.Arm_serial_servo_write(id, angle, 500)
+time.sleep(1)
+aa = Arm.Arm_serial_servo_read(id)
+print(aa)
+time.sleep(0.5)
+
+RGB
+#!/usr/bin/env python3
+#coding-utf-8
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+time.sleep(.1)
+def main():
+    while True:
+        #RGB亮红灯
+        Arm. Arm_RGB_set (50, 0, 0)
+        time.sleep (.5)
+        Arm. Arm_RGB_set (0, 50, 0)
+        time.sleep(.5)
+        Arm. Arm_RGB_set (0, 0, 50)
+        time.sleep(.5)
+        #RGB亮绿灯
+        #RGB亮蓝灯
+        print (" END OF LINE!")
+try:
+    main()
+except KeyboardInterrupt:
+    #释放Arm对象
+    del Arm
+    print (" Program closed! ")
+pass
+
+up and down
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+
+def ctrl_all_servo(S1, S2, S3, S4, S5, S6, time):
+    # 假设这个函数在Arm_Lib模块里，需确保模块中有此定义
+    Arm.Arm_serial_servo_write6(S1, S2, S3, S4, S5, S6, time)
+
+S1 = 90
+S2 = 90
+S3 = 90
+S4 = 90
+S5 = 90
+S6 = 90
+while True:
+    ctrl_all_servo(S1, S2, S3, S4, S5, S6, 500)
+    S1 += 10
+    if S1 > 180:
+        S1 = 0
+# 其他角度类似调整
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+
+def ctrl_all_servo(S1, S2, S3, S4, S5, S6, time):
+    # 假设这个函数在Arm_Lib模块里，需确保模块中有此定义
+    Arm.Arm_serial_servo_write6(S1, S2, S3, S4, S5, S6, time)
+
+S1 = 90
+S2 = 90
+S3 = 90
+S4 = 90
+S5 = 90
+S6 = 90
+while True:
+    ctrl_all_servo(S1, S2, S3, S4, S5, S6, 500)
+    S4 += 10
+    if S4 > 135:
+        S4 = 45
+# 其他角度类似调整
+import time
+from Arm_Lib import Arm_Device
+
+Arm = Arm_Device()
+
+def ctrl_all_servo(S1, S2, S3, S4, S5, S6, move_time):
+    # 调用六轴舵机同步运动函数
+    Arm.Arm_serial_servo_write6(S1, S2, S3, S4, S5, S6, move_time)
+
+# 初始角度
+S1 = 90
+S2 = 90
+S3 = 90
+S4 = 90
+S5 = 90
+S6 = 90
+
+try:
+    while True:
+        ctrl_all_servo(S1, S2, S3, S4, S5, S6, 500)
+        S4 += 10
+        if S4 > 135:
+            S4 = 45
+        # 匹配舵机运动时长，增加延时防止指令过快
+        time.sleep(0.5)
+except KeyboardInterrupt:
+    # 按 Ctrl+C 正常退出，复位舵机
+    ctrl_all_servo(90, 90, 90, 90, 90, 90, 500)
+    time.sleep(0.5)
+print("程序已停止，舵机复位完成")
+
+
+Color_Follow文件夹：
+111
+import cv2 as cv
+import threading
+import random
+from time import sleep
+import ipywidgets as widgets
+from IPython.display import display
+from Arm_Lib import Arm_Device
+import Arm_Lib
+Arm = Arm_Device()
+joints_0 = [90, 135, 20, 25, 90, 30]
+Arm.Arm_serial_servo_write6_array(joints_0, 1000)
+class PositionalPID:
+    def __init__(self, P, I, D):
+        self.Kp = P
+        self.Ki = I
+        self.Kd = D
+        self.SystemOutput = 0.0
+        self.ResultValueBack = 0.0
+        self.PidOutput = 0.0
+        self.PIDErrADD = 0.0
+        self.ErrBack = 0.0
+
+    def SetStepSignal(self, StepSignal):
+        Err = StepSignal - self.SystemOutput
+        KpWork = self.Kp * Err
+        KiWork = self.Ki * self.PIDErrADD
+        KdWork = self.Kd * (Err - self.ErrBack)
+        self.PidOutput = KpWork + KiWork + KdWork
+        self.PIDErrADD += Err
+        # 积分限幅，防止积分饱和
+        if self.PIDErrADD > 500:
+            self.PIDErrADD = 500
+        if self.PIDErrADD < -500:
+            self.PIDErrADD = -500
+        self.ErrBack = Err
+
+    def SetInertiaTime(self, InertiaTime, SampleTime):
+        self.SystemOutput = (InertiaTime * self.ResultValueBack +
+                             SampleTime * self.PidOutput) / (SampleTime + InertiaTime)
+        self.ResultValueBack = self.SystemOutput
+class color_follow:
+    def __init__(self):
+        self.img = None
+        self.target_servox = 90
+        self.target_servoy = 45
+        self.Arm = Arm_Lib.Arm_Device()
+
+        # ===== 优化1: PID参数（进一步提高灵敏度） =====
+        self.xservo_pid = PositionalPID(1.5, 0.18, 0.3)
+        self.yservo_pid = PositionalPID(1.5, 0.18, 0.3)
+
+        # ===== 优化2: 低通滤波器，加快响应 =====
+        self.smooth_x = 320.0
+        self.smooth_y = 240.0
+        self.alpha = 0.75          # 提高平滑系数，追踪更跟手
+
+        # ===== 优化3: 死区阈值 =====
+        self.dead_zone = 4         # 缩小死区，微小移动即可响应
+
+        # ===== 优化4: 舵机角度变化限幅 =====
+        self.max_angle_change = 15  # 每帧最大角度变化量
+
+        # ===== 优化5: 上一帧角度记录（用于限幅） =====
+        self.last_target_servox = 90
+        self.last_target_servoy = 45
+
+    def follow_function(self, img, HSV_config):
+        self.img = cv.resize(img, (640, 480))
+        self.img = cv.GaussianBlur(self.img, (5, 5), 0)
+        hsv = cv.cvtColor(self.img, cv.COLOR_BGR2HSV)
+
+        # 支持单一HSV范围 或 多个HSV范围（如红色需要双范围）
+        if isinstance(HSV_config, list):
+            # 多个HSV范围，合并所有mask
+            mask = None
+            for (c_lower, c_upper) in HSV_config:
+                m = cv.inRange(hsv, c_lower, c_upper)
+                mask = m if mask is None else cv.bitwise_or(mask, m)
+        else:
+            (color_lower, color_upper) = HSV_config
+            mask = cv.inRange(hsv, color_lower, color_upper)
+
+        # 减少形态学操作次数，保留更多细节
+        mask = cv.erode(mask, None, iterations=1)
+        mask = cv.dilate(mask, None, iterations=1)
+        mask = cv.GaussianBlur(mask, (3, 3), 0)
+        cnts = cv.findContours(mask.copy(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)[-2]
+
+        if len(cnts) > 0:
+            cnt = max(cnts, key=cv.contourArea)
+            (color_x, color_y), color_radius = cv.minEnclosingCircle(cnt)
+
+            # 降低最小半径阈值，提高检测灵敏度
+            if color_radius > 10:
+                cv.circle(self.img, (int(color_x), int(color_y)), int(color_radius), (255, 0, 255), 2)
+
+                # ===== 平滑滤波：防止检测位置突变 =====
+                self.smooth_x = self.alpha * color_x + (1 - self.alpha) * self.smooth_x
+                self.smooth_y = self.alpha * color_y + (1 - self.alpha) * self.smooth_y
+
+                # ===== X轴PID控制（带动死区判断） =====
+                x_error = abs(self.smooth_x - 320)
+                if x_error > self.dead_zone:
+                    self.xservo_pid.SystemOutput = self.smooth_x
+                    self.xservo_pid.SetStepSignal(320)
+                    self.xservo_pid.SetInertiaTime(0.01, 0.1)
+                    target_valuex = int(1500 + self.xservo_pid.SystemOutput)
+                    target_servox_new = int((target_valuex - 500) / 10)
+
+                    # ===== 角度变化限幅 =====
+                    delta_x = target_servox_new - self.last_target_servox
+                    if abs(delta_x) > self.max_angle_change:
+                        delta_x = self.max_angle_change if delta_x > 0 else -self.max_angle_change
+                    self.target_servox = self.last_target_servox + delta_x
+
+                    # 边界限制
+                    if self.target_servox > 180:
+                        self.target_servox = 180
+                    if self.target_servox < 0:
+                        self.target_servox = 0
+
+                # ===== Y轴PID控制（带动死区判断） =====
+                y_error = abs(self.smooth_y - 240)
+                if y_error > self.dead_zone:
+                    self.yservo_pid.SystemOutput = self.smooth_y
+                    self.yservo_pid.SetStepSignal(240)
+                    self.yservo_pid.SetInertiaTime(0.01, 0.1)
+                    target_valuey = int(1500 + self.yservo_pid.SystemOutput)
+                    target_servoy_new = int((target_valuey - 500) / 10) - 45
+
+                    # ===== 角度变化限幅 =====
+                    delta_y = target_servoy_new - self.last_target_servoy
+                    if abs(delta_y) > self.max_angle_change:
+                        delta_y = self.max_angle_change if delta_y > 0 else -self.max_angle_change
+                    self.target_servoy = self.last_target_servoy + delta_y
+
+                    if self.target_servoy > 360:
+                        self.target_servoy = 360
+                    if self.target_servoy < 0:
+                        self.target_servoy = 0
+
+                # ===== 记录本帧最终角度 =====
+                self.last_target_servox = self.target_servox
+                self.last_target_servoy = self.target_servoy
+
+                # 调整机械臂各个舵机的旋转角度
+                joints_0 = [self.target_servox, 135, self.target_servoy / 2, self.target_servoy / 2, 90, 30]
+                self.Arm.Arm_serial_servo_write6_array(joints_0, 1000)
+
+        return self.img
+follow = color_follow()
+
+# 初始化模式
+model = 'General'
+# 初始化HSV_learning值
+HSV_learning = ()
+# 设置HSV值
+# 红色在HSV中跨越0度两端，需要双范围合并检测
+color_hsv = {"red": [((0, 50, 50), (10, 255, 255)),      # 红色低端
+                     ((156, 50, 50), (180, 255, 255))],    # 红色高端
+             "green": ((45, 40, 40), (85, 255, 255)),      # 加宽绿色范围
+             "blue": ((95, 50, 50), (130, 255, 255)),      # 加宽蓝色范围(原110-120)
+             "yellow": ((22, 40, 50), (45, 255, 255))}     # 微调黄色
+# 设置随机颜色
+color = [[random.randint(0, 255) for _ in range(3)] for _ in range(255)]
+button_layout = widgets.Layout(width='200px', height='100px', align_self='center')
+# 输出控件
+output = widgets.Output()
+# 颜色追踪
+color_follow_btn = widgets.Button(description='color_follow', button_style='success', layout=button_layout)
+# 选择颜色
+choose_color = widgets.ToggleButtons(
+    options=['red', 'green', 'blue', 'yellow'],
+    button_style='success',
+    tooltips=['red', 'green', 'blue', 'yellow'])
+# 取消追踪
+follow_cancel = widgets.Button(description='follow_cancel', button_style='danger', layout=button_layout)
+# 退出
+exit_button = widgets.Button(description='Exit', button_style='danger', layout=button_layout)
+# 图像控件
+imgbox = widgets.Image(format='jpg', height=480, width=640, layout=widgets.Layout(align_self='auto'))
+# 垂直布局
+img_box = widgets.VBox([imgbox, choose_color], layout=widgets.Layout(align_self='auto'))
+# 垂直布局
+Slider_box = widgets.VBox([color_follow_btn, follow_cancel, exit_button],
+                          layout=widgets.Layout(align_self='auto'))
+# 水平布局
+controls_box = widgets.HBox([img_box, Slider_box], layout=widgets.Layout(align_self='auto'))
+def color_follow_Callback(value):
+    global model
+    model = 'color_follow'
+
+
+def follow_cancel_Callback(value):
+    global model
+    model = 'General'
+
+
+def exit_button_Callback(value):
+    global model
+    model = 'Exit'
+
+
+color_follow_btn.on_click(color_follow_Callback)
+follow_cancel.on_click(follow_cancel_Callback)
+exit_button.on_click(exit_button_Callback)
+def camera():
+    global HSV_learning, model
+    capture = cv.VideoCapture(0)
+    capture.set(3, 640)
+    capture.set(4, 480)
+    capture.set(5, 30)  # 设置帧率
+
+    while capture.isOpened():
+        try:
+            _, img = capture.read()
+            img = cv.resize(img, (640, 480))
+            if model == 'color_follow':
+                img = follow.follow_function(img, color_hsv[choose_color.value])
+                cv.putText(img, choose_color.value, (int(img.shape[0] / 2), 50),
+                           cv.FONT_HERSHEY_SIMPLEX, 2, color[random.randint(0, 254)], 2)
+            if model == 'Exit':
+                cv.destroyAllWindows()
+                capture.release()
+                break
+            imgbox.value = cv.imencode('.jpg', img)[1].tobytes()
+        except KeyboardInterrupt:
+            capture.release()
+devices = []
+for i in range(5):
+    cap = cv.VideoCapture(i, cv.CAP_DSHOW)
+    if cap.isOpened():
+        devices.append(i)
+        cap.release()
+print("可用设备索引:", devices)
+# 显示控制面板
+display(controls_box)
+
+# 在后台线程中运行摄像头
+camera_thread = threading.Thread(target=camera, daemon=True)
+camera_thread.start()
+del Arm
+
+Color_follow
+import cv2 as cv
+import threading
+import random
+from time import sleep
+import ipywidgets as widgets
+from IPython.display import display
+from Arm_Lib import Arm_Device
+import Arm_Lib
+Arm = Arm_Device()
+joints_0 = [90, 135, 20, 25, 90, 30]
+Arm.Arm_serial_servo_write6_array(joints_0, 1000)
+class PositionalPID:
+    def __init__(self, P, I, D):
+        self.Kp = P # 比例系数
+        self.Ki = I # 积分系数
+        self.Kd = D # 微分系数
+        self.SystemOutput = 0.0  # 初始化系统的输出值
+        self.ResultValueBack = 0.0 # 初始化上次系统的输出值
+        self.PidOutput = 0.0 # 初始化PID控制器的输出值
+        self.PIDErrADD = 0.0 # 初始化PID误差累加值
+        self.ErrBack = 0.0 # 初始化上次的误差值
+    # 设置PID控制器参数
+    def SetStepSignal(self, StepSignal):
+        Err = StepSignal - self.SystemOutput  # 计算当前偏差
+        KpWork = self.Kp * Err  # 计算比例项
+        KiWork = self.Ki * self.PIDErrADD  # 计算积分项
+        KdWork = self.Kd * (Err - self.ErrBack) # 计算微分项
+        self.PidOutput = KpWork + KiWork + KdWork # 计算PID输出
+        self.PIDErrADD += Err # 更新PID误差累加值
+        self.ErrBack = Err # 更新上次的误差值
+    # 设置一阶惯性环节系统  其中InertiaTime为惯性时间常数, SampleTime为采样时间
+    def SetInertiaTime(self, InertiaTime, SampleTime):
+        # 根据惯性时间常数和PID输出计算当前系统输出
+        self.SystemOutput = (InertiaTime * self.ResultValueBack + \
+                             SampleTime * self.PidOutput) / (SampleTime + InertiaTime)
+        # 更新上次系统的输出值
+        self.ResultValueBack = self.SystemOutput
+class color_follow:
+    def __init__(self):
+        '''
+        初始化一些参数
+        '''
+        self.img = None
+        self.target_servox=90 # 机械臂1号舵机的初始角度
+        self.target_servoy=45
+        self.Arm = Arm_Lib.Arm_Device()
+        self.xservo_pid = PositionalPID(1.9, 0.3, 0.35)
+        self.yservo_pid = PositionalPID(1.9, 0.3, 0.35)
+
+    def follow_function(self, img, HSV_config): 
+        (color_lower, color_upper) = HSV_config
+        self.img = cv.resize(img, (640, 480), )
+        self.img = cv.GaussianBlur(self.img, (5, 5), 0)
+        hsv = cv.cvtColor(self.img, cv.COLOR_BGR2HSV)
+        mask = cv.inRange(hsv, color_lower, color_upper)
+        mask = cv.erode(mask, None, iterations=2)
+        mask = cv.dilate(mask, None, iterations=2)
+        mask = cv.GaussianBlur(mask, (5, 5), 0)
+        cnts = cv.findContours(mask.copy(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)[-2]
+        if len(cnts) > 0:
+            cnt = max(cnts, key=cv.contourArea)
+            (color_x, color_y), color_radius = cv.minEnclosingCircle(cnt)
+            if color_radius > 10:
+                # 将检测到的颜色用原形线圈标记出来
+                cv.circle(self.img, (int(color_x), int(color_y)), int(color_radius), (255, 0, 255), 2)
+                self.xservo_pid.SystemOutput = color_x # 圆心位置的x坐标作为PID的初始系统输出
+                self.xservo_pid.SetStepSignal(320) # 设置舵机在x轴方向上的目标位置为320，更新PID控制器参数
+                self.xservo_pid.SetInertiaTime(0.01, 0.1)# 设置PID的惯性时间
+                # 如果1号舵机的角度不大于180且圆心的x坐标大于320，或者1号舵机的角度值不小于0且圆心的x坐标小于320，则进行PID控制  
+                if not (self.target_servox>=180 and color_x<=320 or self.target_servox<=0 and color_x>=320):
+                    self.xservo_pid.SystemOutput = color_x
+                    self.xservo_pid.SetStepSignal(320)
+                    self.xservo_pid.SetInertiaTime(0.01, 0.1)
+                    target_valuex = int(1500 + self.xservo_pid.SystemOutput)
+                    self.target_servox = int((target_valuex - 500) / 10)
+                    # 设置移动限制
+                    if self.target_servox > 180:self.target_servox = 180
+                    if self.target_servox < 0: self.target_servox = 0
+                #  如果1号舵机的角度不大于180且圆心的y坐标大于240，或者1号舵机的角度值不小于0且圆心的y坐标小于240，则进行PID控制  
+                if not (self.target_servoy>=180 and color_y<=240 or self.target_servoy<=0 and color_y>=240):
+                    # 输入Y轴方向参数PID控制输入
+                    self.yservo_pid.SystemOutput = color_y
+                    self.yservo_pid.SetStepSignal(240)
+                    self.yservo_pid.SetInertiaTime(0.01, 0.1)
+                    target_valuey = int(1500 + self.yservo_pid.SystemOutput)
+                    self.target_servoy = int((target_valuey - 500) / 10) - 45
+                    # 设置移动限制
+                    if self.target_servoy > 360: self.target_servoy = 360
+                    if self.target_servoy < 0: self.target_servoy = 0
+                # 调整机械臂各个舵机的旋转角度
+                joints_0 = [self.target_servox, 135, self.target_servoy / 2, self.target_servoy / 2, 90, 30]
+                self.Arm.Arm_serial_servo_write6_array(joints_0, 1000)
+        return self.img
+follow = color_follow()
+# 初始化模式
+model = 'General'
+# 初始化HSV_learning值
+HSV_learning = ()
+# 设置HSV值
+color_hsv = {"red": ((0, 25, 90), (10, 255, 255)),
+             "green": ((53, 36, 40), (80, 255, 255)),
+             "blue": ((110, 80, 90), (120, 255, 255)),
+             "yellow": ((25, 20, 55), (50, 255, 255))}
+# 设置随机颜色
+color = [[random.randint(0, 255) for _ in range(3)] for _ in range(255)]
+button_layout = widgets.Layout(width='200px', height='100px', align_self='center')
+# 输出控件
+output = widgets.Output()
+# 颜色追踪
+color_follow = widgets.Button(description='color_follow', button_style='success', layout=button_layout)
+# 选择颜色
+choose_color = widgets.ToggleButtons(options=['red', 'green', 'blue', 'yellow'], button_style='success',
+             tooltips=['Description of slow', 'Description of regular', 'Description of fast'])
+# 取消追踪
+follow_cancel = widgets.Button(description='follow_cancel', button_style='danger', layout=button_layout)
+# 退出
+exit_button = widgets.Button(description='Exit', button_style='danger', layout=button_layout)
+# 图像控件
+imgbox = widgets.Image(format='jpg', height=480, width=640, layout=widgets.Layout(align_self='auto'))
+# 垂直布局
+img_box = widgets.VBox([imgbox, choose_color], layout=widgets.Layout(align_self='auto'))
+# 垂直布局
+Slider_box = widgets.VBox([color_follow,follow_cancel,exit_button],
+                          layout=widgets.Layout(align_self='auto'))
+# 水平布局
+controls_box = widgets.HBox([img_box, Slider_box], layout=widgets.Layout(align_self='auto'))
+display(controls_box)
+def color_follow_Callback(value):
+    global model
+    model = 'color_follow'
+def follow_cancel_Callback(value):
+    global model
+    model = 'General'
+def exit_button_Callback(value):
+    global model
+    model = 'Exit'
+color_follow.on_click(color_follow_Callback)
+follow_cancel.on_click(follow_cancel_Callback)
+exit_button.on_click(exit_button_Callback)
+def camera():
+    global HSV_learning,model
+    # 打开摄像头
+    capture = cv.VideoCapture(0)
+    capture.set(3, 640)
+    capture.set(4, 480)
+    capture.set(5, 30)  #设置帧率
+    # 当摄像头正常打开的情况下循环执行
+    while capture.isOpened():
+        try:
+            # 读取相机的每一帧
+            _, img = capture.read()
+            # 统一图像大小
+            img = cv.resize(img, (640, 480))
+            if model == 'color_follow':
+                img = follow.follow_function(img, color_hsv[choose_color.value])
+                # 添加文字
+                cv.putText(img, choose_color.value, (int(img.shape[0] / 2), 50), cv.FONT_HERSHEY_SIMPLEX, 2, color[random.randint(0, 254)], 2)
+            if model == 'Exit':
+                cv.destroyAllWindows()
+                capture.release()
+                break
+            imgbox.value = cv.imencode('.jpg', img)[1].tobytes()
+        except KeyboardInterrupt:capture.release()
+display(controls_box,output)
+threading.Thread(target=camera, ).start()
+import cv2
+
+# 列出通过 DirectShow 可检测的设备
+devices = []
+for i in range(5):
+    cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+    if cap.isOpened():
+        devices.append(i)
+        cap.release()
+print("可用设备索引:", devices)
+del Arm
+cap.release()
+
+Last
+#!/usr/bin/env python3
+# coding=utf-8
+import time
+import cv2 as cv
+import numpy as np
+import matplotlib.pyplot as plt
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+joints_0 = [90, 135, 20, 25, 90, 30]
+Arm.Arm_serial_servo_write6_array(joints_0, 1000)
+time.sleep(1)
+def arm_clamp_block(enable):
+    if enable == 0:  # 松开
+        Arm.Arm_serial_servo_write(6, 60, 400)
+    else:            # 夹紧
+        Arm.Arm_serial_servo_write(6, 135, 400)
+    time.sleep(0.5)
+
+def arm_move(p, s_time=500):
+    for i in range(5):
+        id = i + 1
+        if id == 5:
+            time.sleep(0.1)
+            Arm.Arm_serial_servo_write(id, p[i], int(s_time * 1.2))
+        else:
+            Arm.Arm_serial_servo_write(id, p[i], s_time)
+        time.sleep(0.01)
+    time.sleep(s_time / 1000)
+
+def arm_move_up():
+    Arm.Arm_serial_servo_write(2, 90, 1500)
+    Arm.Arm_serial_servo_write(3, 90, 1500)
+    Arm.Arm_serial_servo_write(4, 90, 1500)
+    time.sleep(0.1)
+import cv2 as cv
+import threading
+import ipywidgets as widgets
+from IPython.display import display
+
+# 创建显示控件
+camera_img = widgets.Image(format='jpg', width=640, height=480)
+stop_btn = widgets.Button(description="停止画面", button_style='danger')
+display(widgets.VBox([camera_img, stop_btn]))
+
+# 全局变量控制线程
+cap = cv.VideoCapture(0)
+cap.set(3, 640)
+cap.set(4, 480)
+show_running = True
+
+def show_camera_loop():
+    global show_running
+    while show_running:
+        ret, frame = cap.read()
+        if ret:
+            _, jpeg = cv.imencode('.jpg', frame)
+            camera_img.value = jpeg.tobytes()
+
+def stop_show(b):
+    global show_running
+    show_running = False
+    cap.release()
+    print("画面已停止，摄像头释放")
+
+stop_btn.on_click(stop_show)
+
+# 启动线程
+thread = threading.Thread(target=show_camera_loop, daemon=True)
+thread.start()
+print("摄像头实时画面已开启，可以继续执行下方单元格")
+
+p_mould = [90, 130, 0, 0, 90]     # 取料点（模具上方）
+p_top   = [90, 80, 50, 50, 270]   # 过渡高度
+
+# 四个放置角落
+p_Yellow = [64, 23, 68, 56, 270]
+p_Red    = [114, 22, 66, 56, 270]
+p_Green  = [134, 65, 20, 29, 270]
+p_Blue   = [44, 65, 20, 28, 270]
+
+# 四层积木的抓取位置（从高到低）
+p_layer_4 = [90, 76, 40, 17, 270]
+p_layer_3 = [90, 65, 44, 17, 270]
+p_layer_2 = [90, 65, 22, 36, 270]
+p_layer_1 = [90, 50, 37, 30, 270]
+# 四层积木对应的识别站角度
+IDENTIFY_POSITIONS = [
+    [86, 127, 3, 6, 90],    # layer_4（最高层）
+    [86, 119, 1, 8, 90],    # layer_3
+    [86, 111, 0, 11, 90],   # layer_2
+    [85, 79, 7, 25, 90]     # layer_1（最低层）
+]
+
+COLOR_THRESHOLDS = {
+    "red":    ((0, 50, 50),   (10, 255, 255)),
+    "green":  ((40, 50, 50),  (80, 255, 255)),
+    "blue":   ((100, 50, 50), (130, 255, 255)),
+    "yellow": ((20, 50, 50),  (40, 255, 255))
+}
+def detect_color_at_station(debug=True):
+    ret, frame = cap.read()
+    if not ret:
+        return None
+    blurred = cv.GaussianBlur(frame, (5, 5), 0)
+    hsv = cv.cvtColor(blurred, cv.COLOR_BGR2HSV)
+
+    h, w = hsv.shape[:2]
+    # 先用全图测试，确认积木能被抓到
+    # 如果你确定积木在中央，可以恢复 center_roi = hsv[...]
+    # 现在为了排查，直接用全图
+    roi = hsv  # 全图
+
+    max_area = 0
+    best_color = None
+
+    # 将面积阈值暂时降到 50，先跑通再说
+    AREA_THRESHOLD = 50
+
+    for color_name, (lower, upper) in COLOR_THRESHOLDS.items():
+        mask = cv.inRange(roi, np.array(lower), np.array(upper))
+        # 先不做形态学，看原始面积
+        area = cv.countNonZero(mask)
+        if debug:
+            print(f"{color_name}: {area} 像素")
+        if area > max_area and area > AREA_THRESHOLD:
+            max_area = area
+            best_color = color_name
+
+    if debug:
+        print(f"选中颜色: {best_color} (面积={max_area})")
+return best_color
+def sort_one_block(layer_pose, identify_pose, color_name=None):
+    """
+    抓取指定层的积木，若未指定颜色则通过视觉识别，然后放到对应角落。
+    """
+    # 1. 去取料点上方
+    arm_clamp_block(0)          # 确保夹爪张开
+    arm_move(p_mould, 1000)
+    time.sleep(0.5)
+    # 2. 移动到识别站
+    arm_move(identify_pose, 1500)
+    print("移动到识别位置")
+    time.sleep(0.5)             
+    # 3. 识别颜色（如果未预知）
+    if color_name is None:
+        color_name = detect_color_at_station()
+        print(f"识别颜色: {color_name}")
+    # 4. 下降到模具表面
+    arm_move(p_top, 1000)
+    arm_move(layer_pose, 1000)
+    arm_clamp_block(1)          # 夹紧积木
+    time.sleep(0.3)
+    # 5. 抬升
+    arm_move(p_top, 1000)
+    # 6. 根据颜色选择放置位置
+    if color_name == 'yellow':
+        arm_move(p_Yellow, 1500)
+    elif color_name == 'red':
+        arm_move(p_Red, 1500)
+    elif color_name == 'green':
+        arm_move(p_Green, 1500)
+    elif color_name == 'blue':
+        arm_move(p_Blue, 1500)
+    else:
+        # 无法识别则放到默认位置（比如红色角落）
+        print("无法识别颜色，放到默认位置")
+        arm_move(p_Red, 1500)
+
+    # 7. 松开积木
+    arm_clamp_block(0)
+    time.sleep(0.3)
+
+    # 8. 抬升并回到安全位置
+    arm_move_up()
+    arm_move(p_mould, 1000)
+if __name__ == '__main__':
+    print("开始分拣...")
+    # 依次处理四层积木（由高到低）
+    sort_one_block(p_layer_4,IDENTIFY_POSITIONS[0])
+    sort_one_block(p_layer_3,IDENTIFY_POSITIONS[1])
+    sort_one_block(p_layer_2,IDENTIFY_POSITIONS[2])
+    sort_one_block(p_layer_1,IDENTIFY_POSITIONS[3])
+    print("分拣完成")
+    del Arm
+cap.release()
+
+location
+import cv2 as cv
+import threading
+import ipywidgets as widgets
+from IPython.display import display
+
+cap = cv.VideoCapture(0)
+cap.set(3, 640)
+cap.set(4, 480)
+imgbox = widgets.Image(format='jpg', width=640, height=480)
+display(imgbox)
+
+def show_loop():
+    while True:
+        ret, frame = cap.read()
+        if ret:
+            _, jpeg = cv.imencode('.jpg', frame)
+            imgbox.value = jpeg.tobytes()
+
+threading.Thread(target=show_loop, daemon=True).start()
+print("摄像头画面已开启")
+from Arm_Lib import Arm_Device
+import time
+
+Arm = Arm_Device()
+Arm.Arm_Button_Mode(1)   # 开启自由模式，此时可以手动掰机械臂
+print("自由模式已开启，请手动调整机械臂到识别位置")
+Arm.Arm_Button_Mode(0) 
+print("识别站关节角度：")
+ident_pos = []
+for i in range(6):
+    angle = Arm.Arm_serial_servo_read(i+1)
+    ident_pos.append(angle)
+    print(f"舵机{i+1}: {angle}")
+    time.sleep(0.01)
+
+print("\n复制下面这行到主程序：")
+print(f"IDENTIFY_POS = {ident_pos}")
+cap.release()
+
+Porter
+#!/usr/bin/env python3
+#coding=utf-8
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+time.sleep(.1)
+def arm_clamp_block(enable):
+    if enable == 0:
+        Arm.Arm_serial_servo_write(6, 60, 400)
+    else:
+        Arm.Arm_serial_servo_write(6, 135, 400)
+time.sleep(.5)
+def arm_move(p, s_time = 500):
+    for i in range(5):
+        id = i + 1
+        if id == 5:
+            time.sleep(.1)
+            Arm.Arm_serial_servo_write(id, p[i], int(s_time*1.2))
+        else :
+            Arm.Arm_serial_servo_write(id, p[i], s_time)
+        time.sleep(.01)
+time.sleep(s_time/1000)
+def arm_move_up():
+    Arm.Arm_serial_servo_write(2, 90, 1500)
+    Arm.Arm_serial_servo_write(3, 90, 1500)
+    Arm.Arm_serial_servo_write(4, 90, 1500)
+time.sleep(.1)
+p_mould = [90, 130, 0, 0, 90]
+p_top = [90, 80, 50, 50, 270]
+
+
+p_Yellow = [64, 23, 68, 56, 270]
+p_Red = [114, 22, 66, 56, 270]
+
+p_Green = [134, 65, 20, 29, 270]
+p_Blue = [44, 65, 20, 28, 270]
+
+
+p_layer_4 = [90, 76, 40, 17, 270]
+p_layer_3 = [90, 65, 44, 17, 270]
+p_layer_2 = [90, 65, 30, 36, 270]
+p_layer_1 = [90, 50, 37, 30, 270]
+arm_clamp_block(0)
+arm_move(p_mould, 1000)
+time.sleep(1)
+
+arm_move(p_top, 1000)
+arm_move(p_layer_4, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Yellow, 1000)
+arm_clamp_block(0)
+
+time.sleep(.1)
+
+arm_move_up()
+arm_move(p_mould, 1100)
+
+arm_move(p_top, 1000)
+arm_move(p_layer_3, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Red, 1000)
+arm_clamp_block(0)
+
+time.sleep(.1)
+
+arm_move_up()
+arm_move(p_mould, 1100)
+arm_move(p_top, 1000)
+arm_move(p_layer_2, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Green, 1000)
+arm_clamp_block(0)
+
+time.sleep(.1)
+
+arm_move_up()
+arm_move(p_mould, 1100)
+
+arm_move(p_top, 1000)
+arm_move(p_layer_1, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_Blue, 1000)
+arm_clamp_block(0)
+
+time.sleep(.1)
+
+arm_move_up()
+arm_move(p_mould, 1100)
+del Arm
+
+Pyramid
+#!/usr/bin/env python3
+#coding=utf-8
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+time.sleep(.1)
+def arm_clamp_block(enable):
+    if enable == 0:
+        Arm.Arm_serial_servo_write(6, 60, 400)
+    else:
+        Arm.Arm_serial_servo_write(6, 135, 400)
+time.sleep(.5)
+def arm_move(p, s_time = 500):
+    for i in range(5):
+        id = i + 1
+        if id == 5:
+            time.sleep(.1)
+            Arm.Arm_serial_servo_write(id, p[i], int(s_time*1.2))
+        else :
+            Arm.Arm_serial_servo_write(id, p[i], s_time)
+        time.sleep(.01)
+time.sleep(s_time/1000)
+p_mould = [90, 130, 0, 0, 90]
+p_top = [90, 80, 50, 50, 270]
+
+
+p_layer_4 = [90, 76, 40, 17, 270]
+p_layer_3 = [90, 65, 44, 17, 270]
+p_layer_2 = [90, 65, 30, 36, 270]
+p_layer_1 = [90, 50, 37, 30, 270]
+
+p_Yellow = [64, 22, 68, 56, 270]
+p_Red = [114, 22, 66, 56, 270]
+
+p_Green = [134, 60, 20, 29, 270]
+p_Blue = [44, 65, 20, 28, 270]
+
+arm_clamp_block(0)
+arm_move(p_mould, 1000)
+time.sleep(1)
+# 夹取黄色区域的方块堆叠到中间最底层的位置。
+arm_move(p_top, 1000)
+arm_move(p_Yellow, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_layer_1, 1000)
+arm_clamp_block(0)
+
+time.sleep(.1)
+
+arm_move(p_mould, 1100)
+arm_move(p_top, 1000)
+arm_move(p_Red, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_layer_2, 1000)
+arm_clamp_block(0)
+
+time.sleep(.1)
+
+arm_move(p_mould, 1100)
+arm_move(p_top, 1000)
+arm_move(p_Green, 1000)
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_layer_3, 1000)
+arm_clamp_block(0)
+
+time.sleep(.1)
+
+arm_move(p_mould, 1100)
+arm_move(p_top, 1000)
+arm_move(p_Blue, 1000)
+
+arm_clamp_block(1)
+
+arm_move(p_top, 1000)
+arm_move(p_layer_4, 1000)
+arm_clamp_block(0)
+
+time.sleep(.1)
+
+arm_move(p_mould, 1100)
+
+U_D_L_R
+#!/usr/bin/env python3
+#coding=utf-8
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+time.sleep(.1)
+# 同时控制六个舵机运动，逐渐变换角度。
+def ctrl_all_servo(angle, s_time = 500):
+    Arm.Arm_serial_servo_write6(angle, 180-angle, angle, angle, angle, angle, s_time)
+time.sleep(s_time/1000)
+def main():
+    dir_state = 1
+    angle = 90
+
+    # 让舵机复位归中
+    Arm.Arm_serial_servo_write6(90, 90, 90, 90, 90, 90, 500)
+    time.sleep(1)
+
+
+    while True:
+        if dir_state == 1:
+            angle += 1
+            if angle >= 180:
+                dir_state = 0
+        else:
+            angle -= 1
+            if angle <= 0:
+                dir_state = 1
+
+        ctrl_all_servo(angle, 10)
+        time.sleep(10/1000)
+
+try :
+    main()
+except KeyboardInterrupt:
+    print(" Program closed! ")
+Pass
+del Arm
+
+Untitled
+#!/user/bin/env python3
+#coding=utf-8
+import time
+from Arm_Lib import Arm_Device
+Arm = Arm_Device()
+time.sleep(.1)
+def main():
+    for i in range(6):
+        aa = Arm.Arm_serial_servo_read(i+1)
+        print(aa)
+        time.sleep(.01)
+    time.sleep(.5)
+    print("EOF")
+try:
+    main()
+except KeyboardInterrupt:
+    print("Program closed")
+    pass
+id = 4
+angle = 90
+
+Arm.Arm_serial_servo_write(id, angle, 500)
+time.sleep(1)
+
+aa = Arm.Arm_serial_servo_read(id)
+print(aa)
+
+time.sleep(.5)
+Arm.Arm_Button_mode(1)
+
