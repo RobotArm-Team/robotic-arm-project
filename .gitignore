@@ -222,6 +222,9 @@ calibration/local/
 *.key
 *.pem
 
+# Course-platform files are for local study until redistribution rights are confirmed.
+local/course-materials/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

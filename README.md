@@ -46,6 +46,7 @@
 | Web 接口契约 | [api/openapi.yaml](api/openapi.yaml) |
 | 需求—任务—交付物追溯 | [docs/TRACEABILITY.md](docs/TRACEABILITY.md) |
 | 协作规则与 PR 流程 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) |
+| 课程资料盘点与使用边界 | [docs/course-reference/COURSE_PLATFORM_MATERIALS.md](docs/course-reference/COURSE_PLATFORM_MATERIALS.md) |
 | OpenSpec 变更流程 | [openspec/README.md](openspec/README.md) |
 
 ## 目录结构
@@ -97,4 +98,4 @@
 - [ ] 视觉、控制、后端和 Web 实现。
 - [ ] 硬件联调与验收记录。
 
-许可证：Apache-2.0，见 [LICENSE](LICENSE)。
+项目原创内容许可证：Apache-2.0，见 [LICENSE](LICENSE)。`docs/course-reference/` 中的课程原始资料另见其[来源与使用说明](docs/course-reference/COURSE_PLATFORM_MATERIALS.md)，不自动适用 Apache-2.0。

@@ -1,0 +1,2 @@
+# Preserve byte-for-byte copies of the course reference files.
+docs/course-reference/materials/** -text
