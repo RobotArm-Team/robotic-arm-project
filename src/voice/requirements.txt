@@ -1,0 +1,8 @@
+# E2 语音控制模块依赖
+# 核心逻辑（关键词匹配 / 冷却 / 测试）零额外依赖，仅需 Python 3.8+ 标准库。
+
+# 可选：真实麦克风识别（未安装时自动降级到 MockTextBackend / --text-file / --interactive）
+# SpeechRecognition 默认使用 Google Web Speech（需联网）；如需离线可换 Vosk / Whisper 后端。
+SpeechRecognition>=3.10.0
+# PyAudio 为麦克风输入所需（与 SpeechRecognition 配合）：
+# PyAudio>=0.2.11

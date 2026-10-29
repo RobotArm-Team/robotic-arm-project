@@ -50,6 +50,24 @@ class GestureCommand:
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
 
+    def to_event_dict(self, event_id: str, latency_ms: float) -> dict:
+        """产出与 api/openapi.yaml 的 GestureEvent 兼容的字典，供集成层上报事件服务。
+
+        字段对齐说明：
+        - gesture_type <- gesture_id（如 "FIST"）
+        - gesture_code <- gesture_code（整数编号，C 侧主键）
+        - captured_at  <- timestamp（ISO 文本）
+        - event_id / latency_ms 由集成层/控制层提供（端到端耗时与事件唯一标识）
+        """
+        return {
+            "event_id": event_id,
+            "gesture_type": self.gesture_id,
+            "gesture_code": self.gesture_code,
+            "confidence": self.confidence,
+            "captured_at": self.timestamp,
+            "latency_ms": latency_ms,
+        }
+
     @classmethod
     def from_json(cls, s: str) -> "GestureCommand":
         return cls(**json.loads(s))

@@ -4,7 +4,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.abspath("."))
 
 passed = failed = 0
-for path in sorted(glob.glob("gesture/tests/test_*.py")):
+for path in sorted(glob.glob("gesture/tests/test_*.py") + glob.glob("voice/tests/test_*.py")):
     modname = os.path.splitext(os.path.basename(path))[0]
     spec = importlib.util.spec_from_file_location(modname, path)
     mod = importlib.util.module_from_spec(spec)

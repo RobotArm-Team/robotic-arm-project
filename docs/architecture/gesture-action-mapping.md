@@ -1,7 +1,7 @@
-# 手势 → 安全动作 映射表（草案，供 C 确认/自定义）
+# 手势 → 安全动作 映射表（团队约定 v1，C 可自定义动作）
 
 > 起草：A（手势/语音/验收）　|　owner：**C（控制/安全）**
-> 状态：**草案，C 可改动作语义，但急停优先级不可降**
+> 状态：**团队约定（v1）。C 拥有动作语义决定权，但急停（=6）优先级不可降。**
 > 编号来源（单一事实源）：`src/gesture/gesture_command.py` 的 `GESTURE_CODES`
 > 约束：A 不直接控舵机；所有动作须经 C 安全状态机（RECEIVED→VALIDATING→EXECUTING→VERIFYING→SUCCEEDED/SAFE_MODE）
 
