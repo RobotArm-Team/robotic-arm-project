@@ -13,8 +13,14 @@ A 不直接控制舵机，所有动作须经 C 安全状态机校验。
 ## 运行
 
 ```bash
-# 真实麦克风（需 SpeechRecognition + PyAudio，且联网走 Google Web Speech）
+# 真实麦克风（默认 vosk 离线中文，推荐；国内/展台无需外网）
 python -m voice.app --mic
+
+# 指定 Vosk 模型路径（默认 src/voice/models/vosk-cn）
+python -m voice.app --mic --vosk-model /path/to/vosk-cn
+
+# 备选：Google Web Speech（需外网，国内不推荐）
+python -m voice.app --mic --asr google
 
 # 离线 / 测试：从文本文件逐行读取（格式 文本|置信度，置信度可选）
 python -m voice.app --text-file utterances.txt
@@ -28,14 +34,30 @@ python -m voice.app --mic --min-confidence 0.6 --cooldown-s 5 --debug
 
 输出为 `VoiceCommand` 的 JSON 行（stdout），字段与 `api/openapi.yaml` 的 `VoiceCommand` 对齐。
 
+## Vosk 离线模型（国内推荐）
+
+`--mic` 默认使用 **Vosk 离线中文识别**，全程不联网：
+
+```bash
+# 1) 安装依赖
+pip install vosk PyAudio
+
+# 2) 下载并解压中文模型到 src/voice/models/vosk-cn
+python -m voice.tools.download_vosk_model
+# 若脚本下载被墙，手动从 https://alphacephei.com/vosk/models
+# 下载 vosk-model-small-cn-0.15.zip，解压后把内容放到 src/voice/models/vosk-cn
+```
+
 ## 后端可插拔
 
-| 后端 | 场景 | 依赖 |
-|---|---|---|
-| `MockTextBackend` | 离线测试 / 演示 | 无 |
-| `MicBackend` | 真实麦克风 | `SpeechRecognition` + `PyAudio` |
+| 后端 | 场景 | 依赖 | 联网 |
+|---|---|---|---|
+| `VoskBackend` | 真实麦克风（默认） | `vosk` + `PyAudio` + 本地模型 | 否 |
+| `MicBackend` | 真实麦克风（备选） | `SpeechRecognition` + `PyAudio` | 是（Google） |
+| `MockTextBackend` | 离线测试 / 演示 | 无 | 否 |
 
-`MicBackend` 使用 Google Web Speech（中文 `zh-CN`），需联网；如需离线可替换为 Vosk / Whisper 后端，仅需实现同一 `RecognizerBackend` 接口。
+`VoskBackend` 默认启用（`--asr vosk`），识别不依赖任何外部服务，适合国内与展台环境；
+如需切换回 Google，用 `--asr google`（需外网）。新增后端只需实现同一 `RecognizerBackend` 接口。
 
 ## 测试
 

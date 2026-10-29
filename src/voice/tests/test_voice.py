@@ -1,7 +1,7 @@
 """E2 语音模块单元测试（纯逻辑，无需麦克风/外网）。"""
 
 from voice.command_gate import VoiceCommandGate
-from voice.recognizer import MockTextBackend, VoiceRecognizer
+from voice.recognizer import MockTextBackend, VoskBackend, VoiceRecognizer
 from voice.voice_command import VoiceCommand
 
 
@@ -82,3 +82,19 @@ def test_gate_low_confidence_blocked():
     gate = VoiceCommandGate(cooldown_s=0.0, min_confidence=0.5)
     cmd = VoiceCommand(text="帮我分类", confidence=0.2, voice_code=1)
     assert gate.update(cmd, now=0.0) is None
+
+
+def test_vosk_backend_raises_when_missing():
+    # 沙箱未安装 vosk：构造即应抛 ImportError（不静默失败），由 app 上层引导安装。
+    try:
+        import vosk  # noqa: F401
+        return  # 本地已装则跳过该断言
+    except ImportError:
+        pass
+    be = VoskBackend(model_path="__nonexistent_model_dir__")
+    raised = False
+    try:
+        list(be.__iter__())
+    except ImportError:
+        raised = True
+    assert raised, "VoskBackend 在缺失依赖时应抛出 ImportError"

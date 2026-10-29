@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass
 from typing import Iterable, Iterator, List, Optional, Tuple
 
@@ -80,6 +82,16 @@ class MicBackend(RecognizerBackend):
         self.language = language
         self.phrase_time_limit = phrase_time_limit
 
+    def validate(self) -> None:
+        """提前校验依赖是否存在（缺失即抛错，避免迭代时才崩栈）。"""
+        try:
+            import speech_recognition  # noqa: F401
+        except ImportError as e:
+            raise ImportError(
+                "MicBackend 需要 speech_recognition（且麦克风需 PyAudio）："
+                "pip install SpeechRecognition PyAudio；国内建议改用 --asr vosk。"
+            ) from e
+
     def __iter__(self) -> Iterator[Utterance]:
         try:
             import speech_recognition as sr
@@ -102,6 +114,86 @@ class MicBackend(RecognizerBackend):
                 except sr.RequestError:
                     # 网络/服务异常：视为无有效识别
                     yield Utterance(text="", confidence=0.0)
+
+
+class VoskBackend(RecognizerBackend):
+    """离线中文识别后端：基于 Vosk + 本地模型，全程不联网（适合国内/展台环境）。
+
+    依赖（可选安装，未装时自动退回 Google/文本后端）：
+      pip install vosk PyAudio
+    并需下载中文模型（约 40MB），解压到 models/vosk-cn（见 docs 与 download 脚本）：
+      https://alphacephei.com/vosk/models  ->  vosk-model-small-cn-0.15
+    """
+
+    DEFAULT_MODEL_DIR = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "models", "vosk-cn"
+    )
+
+    def __init__(
+        self,
+        model_path: Optional[str] = None,
+        min_confidence: float = 0.5,
+        sample_rate: int = 16000,
+        phrase_time_limit: float = 4.0,
+    ) -> None:
+        super().__init__(min_confidence)
+        self.model_path = model_path or self.DEFAULT_MODEL_DIR
+        self.sample_rate = sample_rate
+        self.phrase_time_limit = phrase_time_limit
+        self._Model = None
+        self._KaldiRecognizer = None
+        self._pyaudio = None
+
+    def _load(self) -> None:
+        try:
+            from vosk import Model, KaldiRecognizer
+            import pyaudio
+        except ImportError as e:
+            raise ImportError(
+                "VoskBackend 需要 vosk 与 PyAudio：pip install vosk PyAudio；"
+                "并把中文模型放到 models/vosk-cn（或 --vosk-model 指定）。"
+            ) from e
+        if not os.path.isdir(self.model_path):
+            raise FileNotFoundError(
+                f"未找到 Vosk 中文模型目录：{self.model_path}\n"
+                "请下载 vosk-model-small-cn-0.15 并解压到该路径，"
+                "或运行 tools/download_vosk_model.py，或用 --vosk-model 指定。"
+            )
+        self._Model = Model
+        self._KaldiRecognizer = KaldiRecognizer
+        self._pyaudio = pyaudio
+
+    def validate(self) -> None:
+        """提前校验依赖与模型是否存在（缺失即抛错，避免迭代时才崩栈）。"""
+        self._load()
+
+    def __iter__(self) -> Iterator[Utterance]:
+        self._load()
+        model = self._Model(self.model_path)
+        rec = self._KaldiRecognizer(model, self.sample_rate)
+        p = self._pyaudio.PyAudio()
+        # Vosk 官方示例用 PyAudio：16bit 单声道、采样率与模型一致。
+        stream = p.open(
+            format=self._pyaudio.paInt16,
+            channels=1,
+            rate=self.sample_rate,
+            input=True,
+            frames_per_buffer=8000,
+        )
+        stream.start_stream()
+        try:
+            while True:
+                data = stream.read(4000, exception_on_overflow=False)
+                if rec.AcceptWaveform(data):
+                    result = json.loads(rec.Result())
+                    text = result.get("text", "").strip()
+                    # Vosk 不返回置信度，给默认 1.0（离线无法代表真实识别质量，不粉饰指标）。
+                    if text:
+                        yield Utterance(text=text, confidence=1.0)
+        finally:
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
 
 
 class VoiceRecognizer:

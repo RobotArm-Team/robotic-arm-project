@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from typing import Optional
 
 # 兼容三种运行方式（PyCharm 右键 Run 走第 2 种）：
 #   1) 作为模块：python -m voice.app
@@ -28,11 +29,23 @@ if __package__ in (None, ""):
         0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
     from voice.command_gate import VoiceCommandGate
-    from voice.recognizer import MicBackend, MockTextBackend, VoiceRecognizer
+    from voice.recognizer import (
+        MicBackend,
+        MockTextBackend,
+        RecognizerBackend,
+        VoskBackend,
+        VoiceRecognizer,
+    )
     from voice.voice_command import VoiceCommand
 else:
     from .command_gate import VoiceCommandGate
-    from .recognizer import MicBackend, MockTextBackend, VoiceRecognizer
+    from .recognizer import (
+        MicBackend,
+        MockTextBackend,
+        RecognizerBackend,
+        VoskBackend,
+        VoiceRecognizer,
+    )
     from .voice_command import VoiceCommand
 
 
@@ -52,13 +65,45 @@ def _read_text_file(path: str):
     return out
 
 
+def _build_mic_backend(args) -> Optional[RecognizerBackend]:
+    """按 --asr 选择麦克风后端：默认优先 Vosk 离线；失败按策略回退或报错。"""
+    want = args.asr
+    # 1) 尝试 Vosk（离线、国内可用）
+    if want in ("vosk", "auto"):
+        try:
+            be = VoskBackend(
+                model_path=args.vosk_model, min_confidence=args.min_confidence
+            )
+            be.validate()  # 提前校验依赖/模型，缺失时立即报错而非迭代时崩栈
+            return be
+        except (ImportError, FileNotFoundError) as e:
+            if want == "vosk":
+                print(f"[E2] Vosk 不可用：{e}", file=sys.stderr)
+                print("[E2] 安装：pip install vosk PyAudio；模型：python -m voice.tools.download_vosk_model",
+                      file=sys.stderr)
+                return None
+            # auto: 落到 Google
+    # 2) Google Web Speech（需外网）
+    try:
+        be = MicBackend(min_confidence=args.min_confidence)
+        be.validate()
+        return be
+    except ImportError as e:
+        print(f"[E2] {e}", file=sys.stderr)
+        return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="E2 语音控制（成员 A 侧）")
     src = ap.add_mutually_exclusive_group()
-    src.add_argument("--mic", action="store_true", help="使用麦克风（需 speech_recognition）")
+    src.add_argument("--mic", action="store_true", help="使用麦克风")
     src.add_argument("--text-file", type=str, default=None,
                      help="从文本文件逐行读取（格式：文本|置信度，置信度可选）")
     src.add_argument("--interactive", action="store_true", help="从标准输入逐行读取")
+    ap.add_argument("--asr", choices=["vosk", "google", "auto"], default="vosk",
+                    help="ASR 引擎：vosk=离线中文(默认,适合国内)；google=Google Web Speech(需外网)；auto=优先 vosk")
+    ap.add_argument("--vosk-model", type=str, default=None,
+                    help="Vosk 中文模型目录路径（默认 src/voice/models/vosk-cn）")
     ap.add_argument("--min-confidence", type=float, default=0.5,
                     help="置信度门限：低于此值不触发（默认 0.5）")
     ap.add_argument("--cooldown-s", type=float, default=3.0, help="同命令冷却秒数（默认 3.0）")
@@ -66,11 +111,13 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.mic:
-        try:
-            backend = MicBackend(min_confidence=args.min_confidence)
-        except ImportError as e:
-            print(f"[E2] {e}", file=sys.stderr)
+        backend = _build_mic_backend(args)
+        if backend is None:
             return 1
+        print(
+            "[E2] 麦克风监听中：请对麦克风说\"帮我分类\"（每次最多等 4 秒，"
+            "Ctrl+C 退出）", file=sys.stderr,
+        )
     elif args.text_file:
         backend = MockTextBackend(
             _read_text_file(args.text_file), min_confidence=args.min_confidence
