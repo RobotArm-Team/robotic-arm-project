@@ -122,7 +122,8 @@ class VoskBackend(RecognizerBackend):
     依赖（可选安装，未装时自动退回 Google/文本后端）：
       pip install vosk PyAudio
     并需下载中文模型（约 40MB），解压到 models/vosk-cn（见 docs 与 download 脚本）：
-      https://alphacephei.com/vosk/models  ->  vosk-model-small-cn-0.15
+      https://alphacephei.com/vosk/models  ->  vosk-model-small-cn-0.22（约 44MB）
+      （无 0.15 版本；也可用更新的 vosk-model-small-cn-0.3，约 33MB）
     """
 
     DEFAULT_MODEL_DIR = os.path.join(
@@ -146,17 +147,22 @@ class VoskBackend(RecognizerBackend):
 
     def _load(self) -> None:
         try:
-            from vosk import Model, KaldiRecognizer
+            from vosk import Model, KaldiRecognizer, SetLogLevel
             import pyaudio
         except ImportError as e:
             raise ImportError(
                 "VoskBackend 需要 vosk 与 PyAudio：pip install vosk PyAudio；"
                 "并把中文模型放到 models/vosk-cn（或 --vosk-model 指定）。"
             ) from e
+        # Kaldi 默认会把大量加载日志打到 stderr，淹没识别结果；静音只保留我们的输出。
+        try:
+            SetLogLevel(-1)
+        except Exception:  # 老版本 vosk 无此接口，忽略
+            pass
         if not os.path.isdir(self.model_path):
             raise FileNotFoundError(
                 f"未找到 Vosk 中文模型目录：{self.model_path}\n"
-                "请下载 vosk-model-small-cn-0.15 并解压到该路径，"
+                "请下载 vosk-model-small-cn-0.22 并解压到该路径，"
                 "或运行 tools/download_vosk_model.py，或用 --vosk-model 指定。"
             )
         self._Model = Model

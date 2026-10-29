@@ -5,7 +5,8 @@
   python -m voice.tools.download_vosk_model --url <自定义模型url> --out <目标目录>
 
 说明：
-- 默认下载 vosk-model-small-cn-0.15（小模型，约 40MB，识别“帮我分类”足够）。
+- 默认下载 vosk-model-small-cn-0.22（小模型，约 44MB，识别“帮我分类”足够）。
+- 可选更新版：vosk-model-small-cn-0.3（约 33MB）；需更准可换大模型 vosk-model-cn-0.22（约 1.3GB）。
 - 模型来自 https://alphacephei.com/vosk/models ，国内通常可直连；若被墙请手动下载后解压。
 - 解压后请确认目录内有 conf/ 与 *.am/.conf 等模型文件（即模型根目录）。
 """
@@ -17,7 +18,9 @@ import os
 import sys
 import zipfile
 
-DEFAULT_URL = "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.15.zip"
+# 小模型约 44MB，识别“帮我分类”足够。备选：vosk-model-small-cn-0.3.zip（33MB，更新）
+# 注意：不存在 0.15 版本（旧文档误写，会 404）。大模型：vosk-model-cn-0.22.zip（约 1.3GB）
+DEFAULT_URL = "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip"
 DEFAULT_OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "vosk-cn")
 
 
@@ -42,7 +45,10 @@ def _unzip(zip_path: str, out_dir: str) -> str:
         if os.path.isdir(nested):
             for item in os.listdir(nested):
                 os.replace(os.path.join(nested, item), os.path.join(out_dir, item))
-            os.rmdir(nested)
+            try:
+                os.rmdir(nested)
+            except OSError:
+                pass  # 空目录删除失败不影响模型加载
     return out_dir
 
 
@@ -62,8 +68,11 @@ def main() -> int:
         print("可手动从 https://alphacephei.com/vosk/models 下载后解压到：", args.out, file=sys.stderr)
         return 1
     finally:
-        if os.path.exists(zip_path):
+    if os.path.exists(zip_path):
+        try:
             os.remove(zip_path)
+        except OSError:
+            print(f"[warn] 临时压缩包未删除，可手动删除：{zip_path}", file=sys.stderr)
     print(f"[done] Vosk 模型就绪：{args.out}")
     return 0
 

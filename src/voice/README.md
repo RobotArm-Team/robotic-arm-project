@@ -45,7 +45,7 @@ pip install vosk PyAudio
 # 2) 下载并解压中文模型到 src/voice/models/vosk-cn
 python -m voice.tools.download_vosk_model
 # 若脚本下载被墙，手动从 https://alphacephei.com/vosk/models
-# 下载 vosk-model-small-cn-0.15.zip，解压后把内容放到 src/voice/models/vosk-cn
+# 下载 vosk-model-small-cn-0.22.zip，解压后把内容放到 src/voice/models/vosk-cn
 ```
 
 ## 后端可插拔
