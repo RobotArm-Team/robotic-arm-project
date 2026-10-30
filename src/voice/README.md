@@ -14,7 +14,7 @@ A 不直接控制舵机，所有动作须经 C 安全状态机校验。
 
 ```bash
 # 真实麦克风（默认 vosk 离线中文，推荐；国内/展台无需外网）
-python -m voice.app --mic
+python -m voice.app --mic --debug
 
 # 指定 Vosk 模型路径（默认 src/voice/models/vosk-cn）
 python -m voice.app --mic --vosk-model /path/to/vosk-cn
@@ -33,6 +33,12 @@ python -m voice.app --interactive
 
 # 调参
 python -m voice.app --mic --min-confidence 0.6 --cooldown-s 5 --debug
+```
+
+> 调试提示：麦克风模式会用 `[识别] '<文本>' 命中→下发 / 无关语音(不触发)` 实时打印
+> 每一句的原始识别结果。若只看到“无关语音”说明**听清了但没命中关键词**（可调整说法）；
+> 若长时间无任何 `[识别]` 输出，说明**没听清/环境噪声过大**（靠近麦克风、安静环境重试）。
+> 短句或嘈杂环境下，程序最多每 4 秒（phrase_time_limit）强制输出一次识别，不会“石沉大海”。
 ```
 
 输出为 `VoiceCommand` 的 JSON 行（stdout），字段与 `api/openapi.yaml` 的 `VoiceCommand` 对齐。

@@ -172,6 +172,47 @@ class VoskBackend(RecognizerBackend):
         self._KaldiRecognizer = KaldiRecognizer
         self._pyaudio = pyaudio
 
+    def _iter_stream(self, data_iter: Iterable[bytes]) -> Iterator[Utterance]:
+        """通用流式识别：data_iter 产出 16k/单声道/16bit 音频块。
+
+        混合两种切句策略，确保任何情况下都能周期性输出识别结果：
+        1) Vosk 句末检测（AcceptWaveform 返回 True）-> 立即取完整句 Result；
+        2) 否则每 phrase_time_limit 秒（约 blocks_per_phrase 块）强制取一次
+           FinalResult，避免短句/嘈杂环境因无句末静音而漏识别（此前麦克风
+           模式只依赖句末检测，导致“说了话却永远没输出”）。
+        """
+        model = self._Model(self.model_path)
+        rec = self._KaldiRecognizer(model, self.sample_rate)
+        # 每块 4000 字节 ≈ 125ms（16k * 2Bytes）；据此换算一个短语的块数。
+        blocks_per_phrase = max(
+            1, int(self.phrase_time_limit * self.sample_rate * 2 / 4000)
+        )
+        n = 0
+        for data in data_iter:
+            if not data:
+                continue
+            is_end = rec.AcceptWaveform(data)
+            n += 1
+            if is_end:
+                # Vosk 判定一句话结束：立即出完整句
+                text = json.loads(rec.Result()).get("text", "").strip()
+                if text:
+                    yield Utterance(text=text, confidence=1.0)
+                rec = self._KaldiRecognizer(model, self.sample_rate)
+                n = 0
+            elif n >= blocks_per_phrase:
+                # 超时强制切句：Vosk 未判定句末时也输出这一段累积识别。
+                text = json.loads(rec.FinalResult()).get("text", "").strip()
+                if text:
+                    yield Utterance(text=text, confidence=1.0)
+                rec = self._KaldiRecognizer(model, self.sample_rate)
+                n = 0
+        # 流结束（如 WAV 文件耗尽）：取最后一段剩余识别。
+        # 短句/无句末静音时整段都累积在此，必须 FinalResult 才能取出。
+        text = json.loads(rec.FinalResult()).get("text", "").strip()
+        if text:
+            yield Utterance(text=text, confidence=1.0)
+
     def _iter_wav(self) -> Iterator[Utterance]:
         """从 WAV 文件识别：自动转单声道/16bit/16kHz，无需麦克风即可端到端验证。"""
         import wave
@@ -189,29 +230,47 @@ class VoskBackend(RecognizerBackend):
 
         wf = wave.open(self.wav_path, "rb")
         rate, channels, sampwidth = wf.getframerate(), wf.getnchannels(), wf.getsampwidth()
-        model = self._Model(self.model_path)
-        rec = self._KaldiRecognizer(model, self.sample_rate)
-        try:
+
+        def _wav_chunks() -> Iterator[bytes]:
             while True:
-                data = wf.readframes(4000)
-                if not data:
+                raw = wf.readframes(4000)
+                if not raw:
                     break
                 if channels != 1:  # 多声道 -> 单声道
-                    data = audioop.tomono(data, sampwidth, 0.5, 0.5)
+                    raw = audioop.tomono(raw, sampwidth, 0.5, 0.5)
                 if sampwidth != 2:  # 8/24/32bit -> 16bit
-                    data = audioop.lin2lin(data, sampwidth, 2)
+                    raw = audioop.lin2lin(raw, sampwidth, 2)
                 if rate != self.sample_rate:  # 采样率 -> 16kHz
-                    data, _ = audioop.ratecv(data, 2, 1, rate, self.sample_rate, None)
-                if rec.AcceptWaveform(data):
-                    text = json.loads(rec.Result()).get("text", "").strip()
-                    if text:
-                        yield Utterance(text=text, confidence=1.0)
-            # 文件结束，取最后一段剩余音频的识别结果
-            text = json.loads(rec.FinalResult()).get("text", "").strip()
-            if text:
-                yield Utterance(text=text, confidence=1.0)
+                    raw, _ = audioop.ratecv(raw, 2, 1, rate, self.sample_rate, None)
+                yield raw
+
+        try:
+            yield from self._iter_stream(_wav_chunks())
         finally:
             wf.close()
+
+    def _iter_mic(self) -> Iterator[Utterance]:
+        """从麦克风流式识别（PyAudio 提供 16k/单声道/16bit 音频块）。"""
+        p = self._pyaudio.PyAudio()
+        stream = p.open(
+            format=self._pyaudio.paInt16,
+            channels=1,
+            rate=self.sample_rate,
+            input=True,
+            frames_per_buffer=8000,
+        )
+        stream.start_stream()
+
+        def _mic_chunks() -> Iterator[bytes]:
+            while True:
+                yield stream.read(4000, exception_on_overflow=False)
+
+        try:
+            yield from self._iter_stream(_mic_chunks())
+        finally:
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
 
     def validate(self) -> None:
         """提前校验依赖与模型是否存在（缺失即抛错，避免迭代时才崩栈）。"""
@@ -222,31 +281,7 @@ class VoskBackend(RecognizerBackend):
         if self.wav_path:
             yield from self._iter_wav()
             return
-        model = self._Model(self.model_path)
-        rec = self._KaldiRecognizer(model, self.sample_rate)
-        p = self._pyaudio.PyAudio()
-        # Vosk 官方示例用 PyAudio：16bit 单声道、采样率与模型一致。
-        stream = p.open(
-            format=self._pyaudio.paInt16,
-            channels=1,
-            rate=self.sample_rate,
-            input=True,
-            frames_per_buffer=8000,
-        )
-        stream.start_stream()
-        try:
-            while True:
-                data = stream.read(4000, exception_on_overflow=False)
-                if rec.AcceptWaveform(data):
-                    result = json.loads(rec.Result())
-                    text = result.get("text", "").strip()
-                    # Vosk 不返回置信度，给默认 1.0（离线无法代表真实识别质量，不粉饰指标）。
-                    if text:
-                        yield Utterance(text=text, confidence=1.0)
-        finally:
-            stream.stop_stream()
-            stream.close()
-            p.terminate()
+        yield from self._iter_mic()
 
 
 class VoiceRecognizer:
@@ -268,9 +303,15 @@ class VoiceRecognizer:
                 return cmd
         return None
 
-    def iter_commands(self) -> Iterator[VoiceCommand]:
-        """遍历后端结果，产出应下发的 VoiceCommand（无关语音被过滤）。"""
+    def iter_commands(self, on_utterance=None) -> Iterator[VoiceCommand]:
+        """遍历后端结果，产出应下发的 VoiceCommand（无关语音被过滤）。
+
+        on_utterance: 可选回调，每识别到一句原始文本即调用（便于 debug
+        区分“没听清”与“听清但未命中关键词”）。
+        """
         for utt in self.backend:
+            if on_utterance is not None:
+                on_utterance(utt)
             if utt.confidence < self.min_confidence:
                 continue
             cmd_name = self.match_command(utt.text)

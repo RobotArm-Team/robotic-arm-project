@@ -150,9 +150,25 @@ def main() -> int:
     recognizer = VoiceRecognizer(backend, min_confidence=args.min_confidence)
     gate = VoiceCommandGate(cooldown_s=args.cooldown_s, min_confidence=args.min_confidence)
 
+    # 麦克风模式：每识别到一句就打印原始文本，便于判断是“没听清”还是“听清未命中”。
+    # 其它模式：仅 --debug 时打印。
+    if args.mic:
+        def _on_utt(utt: "VoiceCommand") -> None:
+            hit = VoiceRecognizer.match_command(utt.text) is not None
+            print(
+                f"[识别] {utt.text!r} 置信={utt.confidence} "
+                f"{'命中→下发' if hit else '无关语音(不触发)'}",
+                file=sys.stderr,
+            )
+    elif args.debug:
+        def _on_utt(utt: "VoiceCommand") -> None:
+            print(f"[dbg] 识别={utt.text!r} 置信={utt.confidence}", file=sys.stderr)
+    else:
+        _on_utt = None
+
     print("[E2] 语音控制启动，输出 VoiceCommand（Ctrl+C 退出）", file=sys.stderr)
     try:
-        for cmd in recognizer.iter_commands():
+        for cmd in recognizer.iter_commands(on_utterance=_on_utt):
             if args.debug:
                 print(
                     f"[dbg] text={cmd.text!r} conf={cmd.confidence} code={cmd.voice_code}",
