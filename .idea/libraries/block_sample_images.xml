@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="block-sample-images">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/docs/course-reference/materials/block-sample-images.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
