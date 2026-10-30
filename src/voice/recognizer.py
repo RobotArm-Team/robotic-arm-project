@@ -136,11 +136,14 @@ class VoskBackend(RecognizerBackend):
         min_confidence: float = 0.5,
         sample_rate: int = 16000,
         phrase_time_limit: float = 4.0,
+        wav_path: Optional[str] = None,
     ) -> None:
         super().__init__(min_confidence)
         self.model_path = model_path or self.DEFAULT_MODEL_DIR
         self.sample_rate = sample_rate
         self.phrase_time_limit = phrase_time_limit
+        # wav_path 非空 = 从音频文件识别（离线验证/回归用，无需麦克风）
+        self.wav_path = wav_path
         self._Model = None
         self._KaldiRecognizer = None
         self._pyaudio = None
@@ -169,12 +172,56 @@ class VoskBackend(RecognizerBackend):
         self._KaldiRecognizer = KaldiRecognizer
         self._pyaudio = pyaudio
 
+    def _iter_wav(self) -> Iterator[Utterance]:
+        """从 WAV 文件识别：自动转单声道/16bit/16kHz，无需麦克风即可端到端验证。"""
+        import wave
+
+        try:
+            import audioop  # Python 3.12 及以下自带；3.13 已移除
+        except ImportError as e:  # pragma: no cover
+            raise ImportError(
+                "WAV 识别需要 audioop（Python ≤3.12 自带）。"
+                "Python 3.13+ 请改用麦克风模式或自行安装 audioop 兼容包。"
+            ) from e
+
+        if not os.path.isfile(self.wav_path):
+            raise FileNotFoundError(f"未找到音频文件：{self.wav_path}")
+
+        wf = wave.open(self.wav_path, "rb")
+        rate, channels, sampwidth = wf.getframerate(), wf.getnchannels(), wf.getsampwidth()
+        model = self._Model(self.model_path)
+        rec = self._KaldiRecognizer(model, self.sample_rate)
+        try:
+            while True:
+                data = wf.readframes(4000)
+                if not data:
+                    break
+                if channels != 1:  # 多声道 -> 单声道
+                    data = audioop.tomono(data, sampwidth, 0.5, 0.5)
+                if sampwidth != 2:  # 8/24/32bit -> 16bit
+                    data = audioop.lin2lin(data, sampwidth, 2)
+                if rate != self.sample_rate:  # 采样率 -> 16kHz
+                    data, _ = audioop.ratecv(data, 2, 1, rate, self.sample_rate, None)
+                if rec.AcceptWaveform(data):
+                    text = json.loads(rec.Result()).get("text", "").strip()
+                    if text:
+                        yield Utterance(text=text, confidence=1.0)
+            # 文件结束，取最后一段剩余音频的识别结果
+            text = json.loads(rec.FinalResult()).get("text", "").strip()
+            if text:
+                yield Utterance(text=text, confidence=1.0)
+        finally:
+            wf.close()
+
     def validate(self) -> None:
         """提前校验依赖与模型是否存在（缺失即抛错，避免迭代时才崩栈）。"""
         self._load()
 
     def __iter__(self) -> Iterator[Utterance]:
         self._load()
+        if self.wav_path:
+            yield from self._iter_wav()
+            return
         model = self._Model(self.model_path)
         rec = self._KaldiRecognizer(model, self.sample_rate)
         p = self._pyaudio.PyAudio()

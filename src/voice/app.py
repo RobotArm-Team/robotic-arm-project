@@ -97,6 +97,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="E2 语音控制（成员 A 侧）")
     src = ap.add_mutually_exclusive_group()
     src.add_argument("--mic", action="store_true", help="使用麦克风")
+    src.add_argument("--wav-file", type=str, default=None,
+                     help="从 WAV 音频文件识别（离线验证/回归，无需麦克风）")
     src.add_argument("--text-file", type=str, default=None,
                      help="从文本文件逐行读取（格式：文本|置信度，置信度可选）")
     src.add_argument("--interactive", action="store_true", help="从标准输入逐行读取")
@@ -118,6 +120,18 @@ def main() -> int:
             "[E2] 麦克风监听中：请对麦克风说\"帮我分类\"（每次最多等 4 秒，"
             "Ctrl+C 退出）", file=sys.stderr,
         )
+    elif args.wav_file:
+        # 离线 WAV 识别走 Vosk（本路径不依赖麦克风/外网，适合回归与指标统计）
+        try:
+            backend = VoskBackend(
+                model_path=args.vosk_model,
+                min_confidence=args.min_confidence,
+                wav_path=args.wav_file,
+            )
+            backend.validate()
+        except (ImportError, FileNotFoundError) as e:
+            print(f"[E2] {e}", file=sys.stderr)
+            return 1
     elif args.text_file:
         backend = MockTextBackend(
             _read_text_file(args.text_file), min_confidence=args.min_confidence

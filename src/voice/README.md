@@ -25,6 +25,9 @@ python -m voice.app --mic --asr google
 # 离线 / 测试：从文本文件逐行读取（格式 文本|置信度，置信度可选）
 python -m voice.app --text-file utterances.txt
 
+# 离线验证：从 WAV 音频识别（无需麦克风，结果可复现，适合回归/统计）
+python -m voice.app --wav-file sample.wav --debug
+
 # 交互模式：标准输入逐行
 python -m voice.app --interactive
 
