@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 from dataclasses import dataclass
 from typing import Iterable, Iterator, List, Optional, Tuple
 
@@ -24,6 +25,18 @@ from .voice_command import VOICE_CODES, VoiceCommand
 COMMAND_KEYWORDS: dict[str, str] = {
     "帮我分类": "SORT_ONE",
 }
+
+# 离线命令识别的受限语法（grammar）：把 Vosk 解码限制到已知命令短语，
+# 从根本上消除小模型把噪声/底噪幻觉成中文碎片的问题（日志里那些
+# “中/近日/烽火 分隔 的 帮 我 分类”正是自由解码的噪声产物）。
+# 注意：vosk-model-small-cn 按“字”建词表，整词短语会被判为
+# “missing in vocabulary”而失效，必须以空格分词（"帮 我 分 类"）。
+# 仅包含当前命令 + 少量预留/降噪干扰项；新增命令时同步在此登记。
+DEFAULT_GRAMMAR: List[str] = [
+    "帮 我 分 类",            # 当前唯一命令“帮我分类”
+    "开 始 分 拣",            # 预留
+    "暂 停", "复 位", "取 消", "急 停",  # 预留/给 Vosk 提供干扰项以降低误触发
+]
 
 
 def _normalize(text: str) -> str:
@@ -137,6 +150,7 @@ class VoskBackend(RecognizerBackend):
         sample_rate: int = 16000,
         phrase_time_limit: float = 4.0,
         wav_path: Optional[str] = None,
+        grammar: Optional[List[str]] = None,
     ) -> None:
         super().__init__(min_confidence)
         self.model_path = model_path or self.DEFAULT_MODEL_DIR
@@ -144,6 +158,8 @@ class VoskBackend(RecognizerBackend):
         self.phrase_time_limit = phrase_time_limit
         # wav_path 非空 = 从音频文件识别（离线验证/回归用，无需麦克风）
         self.wav_path = wav_path
+        # grammar 非空 = 受限解码（仅认已知短语）；None 表示自由解码（调试用）。
+        self.grammar = grammar if grammar is not None else DEFAULT_GRAMMAR
         self._Model = None
         self._KaldiRecognizer = None
         self._pyaudio = None
@@ -172,46 +188,97 @@ class VoskBackend(RecognizerBackend):
         self._KaldiRecognizer = KaldiRecognizer
         self._pyaudio = pyaudio
 
-    def _iter_stream(self, data_iter: Iterable[bytes]) -> Iterator[Utterance]:
-        """通用流式识别：data_iter 产出 16k/单声道/16bit 音频块。
+    def _extract(self, raw_json: str) -> Tuple[str, float]:
+        """解析 Vosk 结果 JSON：返回 (文本, 平均词置信度)。
 
-        混合两种切句策略，确保任何情况下都能周期性输出识别结果：
+        文本为空（静音/未匹配 grammar）返回 ('', 0.0)，调用方据此跳过，
+        从而把噪声/无关语音挡在命令之外；同时用真实 token 置信度替代写死的 1.0。
+        """
+        try:
+            obj = json.loads(raw_json)
+        except (json.JSONDecodeError, TypeError):
+            return "", 0.0
+        text = (obj.get("text") or "").strip()
+        if not text:
+            return "", 0.0
+        # Vosk 中文以空格分词（"帮 我 分 类"）；命令领域直接拼接回成词更直观。
+        text = text.replace(" ", "")
+        parts = obj.get("result") or []
+        if parts:
+            conf = sum(float(p.get("conf", 1.0)) for p in parts) / len(parts)
+        else:
+            conf = 1.0
+        return text, float(conf)
+
+    def _make_recognizer(self, model):
+        """构造 KaldiRecognizer；启用了 grammar 则把解码限制到已知命令短语。"""
+        if self.grammar:
+            return self._KaldiRecognizer(
+                model, self.sample_rate,
+                json.dumps(self.grammar, ensure_ascii=False),
+            )
+        return self._KaldiRecognizer(model, self.sample_rate)
+
+    @staticmethod
+    def _frame_rms(data: bytes) -> float:
+        """计算 16bit 单声道 PCM 块的 RMS 能量（用于轻量 VAD）。"""
+        if not data:
+            return 0.0
+        count = len(data) // 2
+        if count == 0:
+            return 0.0
+        shorts = struct.unpack(f"<{count}h", data)
+        return (sum(s * s for s in shorts) / count) ** 0.5
+
+    def _iter_stream(self, data_iter: Iterable[bytes]) -> Iterator[Utterance]:
+        """通用流式识别：data_iter 产出 16k/单声道/16bit 音频块（或 None 切句哨兵）。
+
+        混合三种切句策略，确保任何情况下都能周期性输出识别结果：
         1) Vosk 句末检测（AcceptWaveform 返回 True）-> 立即取完整句 Result；
-        2) 否则每 phrase_time_limit 秒（约 blocks_per_phrase 块）强制取一次
-           FinalResult，避免短句/嘈杂环境因无句末静音而漏识别（此前麦克风
-           模式只依赖句末检测，导致“说了话却永远没输出”）。
+        2) 超时（约 phrase_time_limit 秒）强制 FinalResult，避免短句漏识别；
+        3) data_iter 产出 None 哨兵 -> 立即 FinalResult 切句（由 VAD 在静音间隙发出）。
+
+        仅当文本非空（命中 grammar 且确为语音，conf 由 Vosk 真实给出）才产出；
+        噪声/静音/无关语音被自动过滤，不再污染命令流。
         """
         model = self._Model(self.model_path)
-        rec = self._KaldiRecognizer(model, self.sample_rate)
-        # 每块 4000 字节 ≈ 125ms（16k * 2Bytes）；据此换算一个短语的块数。
+        rec = self._make_recognizer(model)
+        # 每块 4000 帧 ≈ 0.25s（16k）；据此换算一个短语的块数。
         blocks_per_phrase = max(
             1, int(self.phrase_time_limit * self.sample_rate * 2 / 4000)
         )
         n = 0
         for data in data_iter:
+            if data is None:  # VAD 静音切句哨兵
+                text, conf = self._extract(rec.FinalResult())
+                if text:
+                    yield Utterance(text=text, confidence=conf)
+                rec = self._make_recognizer(model)
+                n = 0
+                continue
             if not data:
                 continue
             is_end = rec.AcceptWaveform(data)
             n += 1
             if is_end:
                 # Vosk 判定一句话结束：立即出完整句
-                text = json.loads(rec.Result()).get("text", "").strip()
+                text, conf = self._extract(rec.Result())
                 if text:
-                    yield Utterance(text=text, confidence=1.0)
-                rec = self._KaldiRecognizer(model, self.sample_rate)
+                    yield Utterance(text=text, confidence=conf)
+                rec = self._make_recognizer(model)
                 n = 0
             elif n >= blocks_per_phrase:
                 # 超时强制切句：Vosk 未判定句末时也输出这一段累积识别。
-                text = json.loads(rec.FinalResult()).get("text", "").strip()
+                text, conf = self._extract(rec.FinalResult())
                 if text:
-                    yield Utterance(text=text, confidence=1.0)
-                rec = self._KaldiRecognizer(model, self.sample_rate)
+                    yield Utterance(text=text, confidence=conf)
+                rec = self._make_recognizer(model)
                 n = 0
         # 流结束（如 WAV 文件耗尽）：取最后一段剩余识别。
         # 短句/无句末静音时整段都累积在此，必须 FinalResult 才能取出。
-        text = json.loads(rec.FinalResult()).get("text", "").strip()
+        text, conf = self._extract(rec.FinalResult())
         if text:
-            yield Utterance(text=text, confidence=1.0)
+            yield Utterance(text=text, confidence=conf)
 
     def _iter_wav(self) -> Iterator[Utterance]:
         """从 WAV 文件识别：自动转单声道/16bit/16kHz，无需麦克风即可端到端验证。"""
@@ -250,23 +317,53 @@ class VoskBackend(RecognizerBackend):
             wf.close()
 
     def _iter_mic(self) -> Iterator[Utterance]:
-        """从麦克风流式识别（PyAudio 提供 16k/单声道/16bit 音频块）。"""
+        """从麦克风流式识别（PyAudio 提供 16k/单声道/16bit 音频块）。
+
+        内置轻量能量 VAD：
+        - 启动先采集 ~0.5s 环境噪声底，据此设定能量门限；
+        - 仅在检测到语音时才把音频喂给 Vosk，并在句尾静音间隙发出切句哨兵；
+        - 纯静音段不喂给 Vosk，避免把底噪/房间噪声幻觉成中文碎片。
+        配合 grammar 约束，可大幅消除“识别不准确/满屏无关语音”的问题。
+        """
         p = self._pyaudio.PyAudio()
         stream = p.open(
             format=self._pyaudio.paInt16,
             channels=1,
             rate=self.sample_rate,
             input=True,
-            frames_per_buffer=8000,
+            frames_per_buffer=4000,
         )
         stream.start_stream()
 
-        def _mic_chunks() -> Iterator[bytes]:
+        # 校准环境噪声底
+        noise_blocks = max(1, int(0.5 * self.sample_rate / 4000))
+        ambient = [stream.read(4000, exception_on_overflow=False) for _ in range(noise_blocks)]
+        noise_rms = max((self._frame_rms(b) for b in ambient), default=0.0)
+        # grammar 已保证不会输出噪声乱码，故 VAD 取较灵敏的阈值以提升召回：
+        # 高于噪声底 1.5 倍或最小 200（16bit PCM 范围 ±32767，语音 RMS 通常 >> 此值）。
+        threshold = max(noise_rms * 1.5, 200.0)
+        silence_limit = max(1, int(0.5 * self.sample_rate / 4000))  # 0.5s 静音判定句尾
+
+        def _vad_chunks() -> Iterator[Optional[bytes]]:
+            speaking = False
+            silent = 0
             while True:
-                yield stream.read(4000, exception_on_overflow=False)
+                data = stream.read(4000, exception_on_overflow=False)
+                if self._frame_rms(data) >= threshold:
+                    speaking = True
+                    silent = 0
+                    yield data
+                elif speaking:
+                    # 句尾拖尾静音也喂给 Vosk 帮助断句，积累到间隙则切句
+                    silent += 1
+                    yield data
+                    if silent >= silence_limit:
+                        yield None  # 触发切句
+                        speaking = False
+                # 否则纯静音：不喂给 Vosk
 
         try:
-            yield from self._iter_stream(_mic_chunks())
+            yield from self._iter_stream(_vad_chunks())
         finally:
             stream.stop_stream()
             stream.close()

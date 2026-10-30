@@ -1,7 +1,12 @@
 """E2 语音模块单元测试（纯逻辑，无需麦克风/外网）。"""
 
 from voice.command_gate import VoiceCommandGate
-from voice.recognizer import MockTextBackend, VoskBackend, VoiceRecognizer
+from voice.recognizer import (
+    DEFAULT_GRAMMAR,
+    MockTextBackend,
+    VoskBackend,
+    VoiceRecognizer,
+)
 from voice.voice_command import VoiceCommand
 
 
@@ -98,3 +103,26 @@ def test_vosk_backend_raises_when_missing():
     except ImportError:
         raised = True
     assert raised, "VoskBackend 在缺失依赖时应抛出 ImportError"
+
+
+def test_default_grammar_contains_command():
+    # grammar 必须覆盖当前命令短语（按字空格分词），否则会被自由解码噪声干扰
+    assert "帮 我 分 类" in DEFAULT_GRAMMAR
+    # 归一化拼接后仍能命中命令
+    assert any(g.replace(" ", "") == "帮我分类" for g in DEFAULT_GRAMMAR)
+
+
+def test_vosk_extract_parses_text_and_confidence():
+    # _extract 解析 Vosk 真实结果，返回 (文本, 平均词置信度)
+    be = VoskBackend()
+    raw = '{"text":"帮我分类","result":[{"word":"帮","conf":0.9},{"word":"我","conf":1.0},{"word":"分类","conf":0.8}]}'
+    text, conf = be._extract(raw)
+    assert text == "帮我分类"
+    assert abs(conf - (0.9 + 1.0 + 0.8) / 3) < 1e-6
+
+
+def test_vosk_extract_empty_and_malformed():
+    be = VoskBackend()
+    assert be._extract('{"text":"","result":[]}') == ("", 0.0)
+    assert be._extract("{}") == ("", 0.0)
+    assert be._extract("not-json") == ("", 0.0)

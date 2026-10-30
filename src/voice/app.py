@@ -35,6 +35,7 @@ if __package__ in (None, ""):
         RecognizerBackend,
         VoskBackend,
         VoiceRecognizer,
+        DEFAULT_GRAMMAR,
     )
     from voice.voice_command import VoiceCommand
 else:
@@ -45,6 +46,7 @@ else:
         RecognizerBackend,
         VoskBackend,
         VoiceRecognizer,
+        DEFAULT_GRAMMAR,
     )
     from .voice_command import VoiceCommand
 
@@ -72,7 +74,9 @@ def _build_mic_backend(args) -> Optional[RecognizerBackend]:
     if want in ("vosk", "auto"):
         try:
             be = VoskBackend(
-                model_path=args.vosk_model, min_confidence=args.min_confidence
+                model_path=args.vosk_model,
+                min_confidence=args.min_confidence,
+                grammar=None if args.no_grammar else DEFAULT_GRAMMAR,
             )
             be.validate()  # 提前校验依赖/模型，缺失时立即报错而非迭代时崩栈
             return be
@@ -106,6 +110,8 @@ def main() -> int:
                     help="ASR 引擎：vosk=离线中文(默认,适合国内)；google=Google Web Speech(需外网)；auto=优先 vosk")
     ap.add_argument("--vosk-model", type=str, default=None,
                     help="Vosk 中文模型目录路径（默认 src/voice/models/vosk-cn）")
+    ap.add_argument("--no-grammar", action="store_true",
+                    help="关闭 grammar 约束（自由解码，仅调试用；默认开启以抑制噪声误识别）")
     ap.add_argument("--min-confidence", type=float, default=0.5,
                     help="置信度门限：低于此值不触发（默认 0.5）")
     ap.add_argument("--cooldown-s", type=float, default=3.0, help="同命令冷却秒数（默认 3.0）")
@@ -127,6 +133,7 @@ def main() -> int:
                 model_path=args.vosk_model,
                 min_confidence=args.min_confidence,
                 wav_path=args.wav_file,
+                grammar=None if args.no_grammar else DEFAULT_GRAMMAR,
             )
             backend.validate()
         except (ImportError, FileNotFoundError) as e:
