@@ -1,0 +1,2 @@
+# 禁止对 Vosk 离线模型做换行符转换（避免 Windows CRLF 破坏 Kaldi 配置文件）
+src/voice/models/vosk-cn/ binary
