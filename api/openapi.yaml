@@ -203,12 +203,13 @@ components:
         latency_ms: {type: number, format: float, minimum: 0}
     GestureEvent:
       type: object
-      required: [event_id, gesture_type, confidence, captured_at, latency_ms]
+      required: [event_id, gesture_type, gesture_code, confidence, captured_at, latency_ms]
       properties:
         event_id: {type: string}
-        gesture_type: {type: string, description: 约定手势类型，不存储原始手势图像。}
+        gesture_type: {type: string, description: 约定手势类型字符串，等于 A 侧 GestureCommand.gesture_id（如 FIST）；与 gesture_code 并存。}
+        gesture_code: {type: integer, minimum: 0, maximum: 7, description: 稳定整数编号，C 侧查找表主键；来源 src/gesture/gesture_command.py 的 GESTURE_CODES。}
         confidence: {type: number, format: float, minimum: 0, maximum: 1}
-        captured_at: {type: string, format: date-time}
+        captured_at: {type: string, format: date-time, description: 识别时间；来自 A 侧 GestureCommand.timestamp 的 ISO 形式。}
         latency_ms: {type: number, format: float, minimum: 0}
     HealthStatus:
       type: object
