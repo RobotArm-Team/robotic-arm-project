@@ -1,0 +1,7 @@
+# 核心依赖 —— Mock 控制器即可运行，无需硬件
+numpy>=1.24
+pytest>=7.0
+
+# 以下为真实硬件依赖，可选（import 会被 try/except 保护）
+# Arm_Lib   # 课程提供的机械臂控制库（UART 115200）
+# rclpy     # ROS 2 Python 客户端库
