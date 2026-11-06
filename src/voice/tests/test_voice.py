@@ -26,6 +26,27 @@ def test_match_command_no_trigger():
     assert VoiceRecognizer.match_command("") is None
 
 
+def test_match_command_all_keywords():
+    # 6 条命令关键词均应命中对应命令名
+    cases = {
+        "帮我分类": "SORT_ONE",
+        "开始": "START",
+        "开始分拣吧": "START",
+        "暂停": "PAUSE",
+        "复位": "RESET",
+        "取消": "CANCEL",
+        "急停": "ESTOP",
+    }
+    for text, cmd in cases.items():
+        assert VoiceRecognizer.match_command(text) == cmd, text
+
+
+def test_match_command_non_command_untouched():
+    # 闲聊/无关话语不命中任何命令（自由解码下会显示但不触发）
+    for t in ("你好", "今天天气不错", "帮我倒杯水", "打开灯"):
+        assert VoiceRecognizer.match_command(t) is None
+
+
 def test_voice_command_to_event_dict_keys():
     cmd = VoiceCommand(text="帮我分类", confidence=0.9, voice_code=1)
     ev = cmd.to_event_dict()
@@ -58,6 +79,25 @@ def test_iter_commands_emits_on_match():
     assert out[0].text == "帮我分类"
 
 
+def test_iter_commands_emits_all_command_codes():
+    # 自由解码下，6 条命令均应正确下发对应 voice_code
+    items = [
+        ("帮我分类", 0.9),
+        ("开始分拣", 0.9),
+        ("暂停", 0.9),
+        ("复位", 0.9),
+        ("取消", 0.9),
+        ("急停", 0.9),
+        ("你好闲聊", 0.9),   # 非命令，不下发
+    ]
+    rec = VoiceRecognizer(MockTextBackend(items), min_confidence=0.5)
+    out = list(rec.iter_commands())
+    codes = sorted(c.voice_code for c in out)
+    assert codes == [1, 2, 3, 4, 5, 6]
+    texts = {c.text for c in out}
+    assert "你好闲聊" not in texts
+
+
 def test_false_trigger_rate_over_irrelevant_set():
     # E2 验收：20 条无关语音，误触发率 ≤5%（此处为 0%）
     irrelevant = [
@@ -83,6 +123,20 @@ def test_gate_cooldown_blocks_retrigger():
     assert gate.update(cmd, now=3.0) is not None
 
 
+def test_gate_allows_different_commands_in_quick_succession():
+    # 不同命令互不阻塞：连续说 开始/暂停/复位 都应下发
+    gate = VoiceCommandGate(cooldown_s=3.0)
+    cmds = [
+        VoiceCommand(text="开始", confidence=0.9, voice_code=2),
+        VoiceCommand(text="暂停", confidence=0.9, voice_code=3),
+        VoiceCommand(text="复位", confidence=0.9, voice_code=4),
+    ]
+    out = [gate.update(c, now=0.0) for c in cmds]
+    assert all(o is not None for o in out), "不同命令应互不被冷却拦截"
+    # 同一命令在冷却期内仍被拦
+    assert gate.update(cmds[0], now=1.0) is None
+
+
 def test_gate_low_confidence_blocked():
     gate = VoiceCommandGate(cooldown_s=0.0, min_confidence=0.5)
     cmd = VoiceCommand(text="帮我分类", confidence=0.2, voice_code=1)
@@ -106,10 +160,12 @@ def test_vosk_backend_raises_when_missing():
 
 
 def test_default_grammar_contains_command():
-    # grammar 必须覆盖当前命令短语（按字空格分词），否则会被自由解码噪声干扰
+    # grammar（--grammar 严格模式）必须覆盖全部 6 条命令短语（按字空格分词）
+    joined = {g.replace(" ", "") for g in DEFAULT_GRAMMAR}
+    for phrase in ("帮我分类", "开始", "开始分拣", "暂停", "复位", "取消", "急停"):
+        assert phrase in joined, phrase
+    # “帮 我 分 类” 仍应存在
     assert "帮 我 分 类" in DEFAULT_GRAMMAR
-    # 归一化拼接后仍能命中命令
-    assert any(g.replace(" ", "") == "帮我分类" for g in DEFAULT_GRAMMAR)
 
 
 def test_vosk_extract_parses_text_and_confidence():

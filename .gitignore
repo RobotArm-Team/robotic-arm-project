@@ -217,6 +217,9 @@ data/private/
 artifacts/
 models/*.pt
 models/*.onnx
+# Vosk LARGE model (~1.3GB) downloaded locally; NEVER commit (would bloat repo).
+# Test with: --vosk-model src/voice/models/vosk-cn-big
+src/voice/models/vosk-cn-big/
 *.bag
 calibration/local/
 *.key

@@ -1,6 +1,7 @@
 """VoiceCommand：A 交给 B 编排层 / C 控制层的语音命令契约。
 
-E2 语音控制（成员 A 侧）：识别到“帮我分类”等关键词时，输出 VoiceCommand（含 voice_code）。
+E2 语音控制（成员 A 侧）：识别到命令关键词（帮我分类 / 开始 / 暂停 / 复位 / 取消 / 急停）
+时，输出 VoiceCommand（含 voice_code）。系统能听清任意话语，但只有命中命令关键词才下发。
 A 不直接控制舵机；C 读取 voice_code 后自定义舵机动作，并经过安全状态机校验。
 
 字段与 api/openapi.yaml 的 VoiceCommand 对齐：
@@ -23,8 +24,14 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 # 规范化语音命令 -> 编号映射（C 侧据此决定舵机动作）
+# 急停 ESTOP=6 与手势 gesture_code=6（急停）对齐，便于 C 侧统一最高优先级处理。
 VOICE_CODES: dict[str, int] = {
     "SORT_ONE": 1,   # “帮我分类”：触发一次完整分拣
+    "START":    2,   # “开始 / 开始分拣”：启动分拣流程
+    "PAUSE":    3,   # “暂停”：暂停当前动作
+    "RESET":    4,   # “复位”：回到初始位姿
+    "CANCEL":   5,   # “取消”：取消当前指令/任务
+    "ESTOP":    6,   # “急停”：最高优先级，立即停止所有运动
 }
 
 CODE_TO_VOICE: dict[int, str] = {v: k for k, v in VOICE_CODES.items()}

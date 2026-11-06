@@ -2,9 +2,11 @@
 
 设计：
 - 后端可插拔：MicBackend（真实麦克风，需 speech_recognition）与 MockTextBackend（离线/测试）。
-- 关键词匹配：仅当识别文本命中白名单关键词且置信度达标，才产出 VoiceCommand。
-  当前唯一命令：“帮我分类” -> SORT_ONE (voice_code=1)，触发一次完整分拣。
-- 低置信或不命中的文本视为“无关语音”，返回 None（不触发），满足 E2 误触发率 ≤5% 验收。
+- 默认「自由解码 + 关键词过滤」：Vosk 自由解码能听清任意话语，仅当文本命中白名单
+  命令关键词且置信度达标，才产出 VoiceCommand 并下发；其它话语（闲聊/噪声）只显示、
+  不触发，满足 E2 误触发率 ≤5% 验收。
+- 可选「受限 grammar 严格模式」（--grammar）：把解码锁死到已知命令短语，用于嘈杂展台
+  等极端环境，进一步压噪声；日常默认自由解码即可。
 
 依赖：
 - 可选：speech_recognition（仅 MicBackend 需要；离线环境可缺失，自动降级到 MockTextBackend）。
@@ -21,21 +23,29 @@ from typing import Iterable, Iterator, List, Optional, Tuple
 from .voice_command import VOICE_CODES, VoiceCommand
 
 # 关键词 -> 命令名（再经 VOICE_CODES 映射为整数编号）。
-# 关键词做包含匹配（容忍“请帮我分类一下”等前后缀）。
+# 关键词做包含匹配（容忍“请帮我分类一下”“开始分拣吧”等前后缀）。
+# 系统能识别任意话语，但只有命中这里的关键词才会下发命令。
 COMMAND_KEYWORDS: dict[str, str] = {
-    "帮我分类": "SORT_ONE",
+    "帮我分类": "SORT_ONE",  # -> voice_code 1
+    "开始": "START",         # -> 2（也覆盖“开始分拣”等）
+    "暂停": "PAUSE",         # -> 3
+    "复位": "RESET",         # -> 4
+    "取消": "CANCEL",        # -> 5
+    "急停": "ESTOP",         # -> 6（与手势急停对齐，最高优先级）
 }
 
-# 离线命令识别的受限语法（grammar）：把 Vosk 解码限制到已知命令短语，
-# 从根本上消除小模型把噪声/底噪幻觉成中文碎片的问题（日志里那些
-# “中/近日/烽火 分隔 的 帮 我 分类”正是自由解码的噪声产物）。
+# 受限语法（grammar，--grammar 严格模式用）：把 Vosk 解码限制到已知命令短语，
+# 从根本上消除小模型把噪声/底噪幻觉成中文碎片的问题。
 # 注意：vosk-model-small-cn 按“字”建词表，整词短语会被判为
 # “missing in vocabulary”而失效，必须以空格分词（"帮 我 分 类"）。
-# 仅包含当前命令 + 少量预留/降噪干扰项；新增命令时同步在此登记。
+# 必须与上方 COMMAND_KEYWORDS 同步扩充；新增命令时同步在此登记。
 DEFAULT_GRAMMAR: List[str] = [
-    "帮 我 分 类",            # 当前唯一命令“帮我分类”
-    "开 始 分 拣",            # 预留
-    "暂 停", "复 位", "取 消", "急 停",  # 预留/给 Vosk 提供干扰项以降低误触发
+    "帮 我 分 类",                  # 帮我分类
+    "开 始", "开 始 分 拣",         # 开始 / 开始分拣
+    "暂 停",                        # 暂停
+    "复 位",                        # 复位
+    "取 消",                        # 取消
+    "急 停",                        # 急停
 ]
 
 
@@ -132,6 +142,10 @@ class MicBackend(RecognizerBackend):
 class VoskBackend(RecognizerBackend):
     """离线中文识别后端：基于 Vosk + 本地模型，全程不联网（适合国内/展台环境）。
 
+    默认自由解码（grammar=None）：能听清任意话语，由上层关键词匹配决定哪些
+    触发命令；仅 --grammar 才进入受限严格模式。配合内置能量 VAD，可把噪声/静音
+    挡在命令之外（详见 _iter_mic）。
+
     依赖（可选安装，未装时自动退回 Google/文本后端）：
       pip install vosk PyAudio
     并需下载中文模型（约 40MB），解压到 models/vosk-cn（见 docs 与 download 脚本）：
@@ -158,8 +172,9 @@ class VoskBackend(RecognizerBackend):
         self.phrase_time_limit = phrase_time_limit
         # wav_path 非空 = 从音频文件识别（离线验证/回归用，无需麦克风）
         self.wav_path = wav_path
-        # grammar 非空 = 受限解码（仅认已知短语）；None 表示自由解码（调试用）。
-        self.grammar = grammar if grammar is not None else DEFAULT_GRAMMAR
+        # grammar 默认 None = 自由解码（能识别任意话语，仅命令关键词触发）；
+        # 传 DEFAULT_GRAMMAR 则进入受限严格模式（--grammar，用于嘈杂展台）。
+        self.grammar = grammar
         self._Model = None
         self._KaldiRecognizer = None
         self._pyaudio = None
