@@ -24,3 +24,11 @@
 - 验证：课程任务文字与样本图像中的彩色方块一致；未运行模型或真机，未改变验收数字。
 - 下一步：建立逐框标注与样本统计，按各类差额安排补采。
 - 追踪：[Issue #8](https://github.com/RobotArm-Team/robotic-arm-project/issues/8) 已创建；资料导入 PR #7 合并后，本次澄清通过独立分支 `docs/8-block-proxy-scope` 提交至 [PR #9](https://github.com/RobotArm-Team/robotic-arm-project/pull/9) 审阅。
+
+## 2026-11-06 原始图片盘点
+
+- 目的：把课程资料包中的原始图片转为可标注、可追溯的数据工作区，为计算四类方块的补采缺口做准备。
+- 已做：将课程 `block-sample-images.zip` 解压至本机忽略目录 `data/raw/course-blocks/images/`；为每张图片生成文件名、尺寸、字节数与 SHA-256 的 `manifest.csv`。
+- 发现：共 206 张 JPG，全部可读取、均为 640×480，未发现 SHA-256 完全相同的重复文件。图片数不等于类别样本数，因为单图可能包含多个方块。
+- 验证：逐张解码并计算 SHA-256；原始图片与清单均处于 `.gitignore` 覆盖的 `data/raw/`，不会提交至仓库。
+- 下一步：固定标注工具和四类标签 ID，逐框标注并统计每类图像数、目标框数和缺口，再安排平台补采与本机相机标定。
