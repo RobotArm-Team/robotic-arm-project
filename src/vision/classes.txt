@@ -1,0 +1,5 @@
+recyclable
+hazardous
+kitchen
+other
+

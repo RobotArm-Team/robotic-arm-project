@@ -2,7 +2,7 @@
 
 后续实现按以下模块放置：
 
-- `vision/`：数据处理、YOLOv8 推理服务与识别结果；负责人 B。
+- `vision/`：数据处理、采集准备、YOLOv8 推理服务与识别结果；负责人 B。当前采集工具见[视觉采集准备](vision/README.md)。
 - `control/`：标定、ROS2 节点、Arm_Lib 适配与安全门禁；负责人 C。
 - `backend/`：任务编排、事件服务、数据库和 HTTP API；负责人 D，架构与集成由 A 协同。
 - `web/`：管理看板；负责人 D。
