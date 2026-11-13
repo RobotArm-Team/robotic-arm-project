@@ -2,6 +2,12 @@
 
 本目录供 B 在 200DK 上补采彩色方块图片。采集程序只访问 USB 摄像头，不导入 `Arm_Lib`，也不发送舵机指令。相机标定仍按课程 `camera.ipynb` 在 C 配合下完成。
 
+## 阶段性训练基线
+
+现有 206 张课程图片已完成实色面标注、组级 7:2:1 划分和 YOLOv8n 阶段性训练。训练结论、指标、权重哈希、复现命令和限制见 [YOLOv8 彩色方块阶段性基线训练报告](../../docs/vision/TRAINING_BASELINE_V1.md)。
+
+训练依赖固定在 `requirements-train.txt`。本地数据、权重和训练图表均受 `.gitignore` 保护；脚本位于 `tools/prepare_yolo_dataset.py` 与 `tools/train_yolov8_baseline.py`。
+
 ## 当前可离线完成的准备
 
 1. 继续在 Model Adapter 中复核课程 206 张图片的实色面候选框。
