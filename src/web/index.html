@@ -44,6 +44,10 @@
         <svg viewBox="0 0 24 24" fill="none"><path d="M6 20v-4.5A3.5 3.5 0 0 1 9.5 12H15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="5" cy="20.5" r="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M15 12l3.5-4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M18.2 5.2 20.5 7l-1.6 2.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9.5" cy="12" r="2.2" stroke="currentColor" stroke-width="1.6"/></svg>
         <span>机械臂控制</span>
       </button>
+      <button class="nav-item" data-view="gesture">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M9 11.5V5.8a1.6 1.6 0 0 1 3.2 0v5.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12.2 10.9V4.8a1.6 1.6 0 0 1 3.2 0v6.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M15.4 11.3V7.2a1.6 1.6 0 0 1 3.2 0v6.6a7 7 0 0 1-7 7h-.6a6 6 0 0 1-4.6-2.2l-3-3.8a1.7 1.7 0 0 1 2.5-2.3L9 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>手势识别</span>
+      </button>
       <button class="nav-item" data-view="tasks">
         <svg viewBox="0 0 24 24" fill="none"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" stroke="currentColor" stroke-width="1.8"/><path d="m10 8.8 5 3.2-5 3.2V8.8Z" fill="currentColor"/></svg>
         <span>任务受理</span>
@@ -368,6 +372,68 @@
           <li><code>挥手</code>：手臂交替摆动 3 次，约 4 秒。</li>
           <li><code>夹爪张开 / 夹爪闭合</code>：单独控制第 6 号夹爪舵机。</li>
           <li>实机动作会真实驱动舵机，请确认工作范围内无障碍；现场急停始终优先于软件停止。</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 手势识别 -->
+    <section class="view" id="view-gesture">
+      <div class="section-head">
+        <h2>识别状态</h2>
+        <span class="gesture-meta">
+          <span class="badge badge-gesture-stopped" id="gestureStatusBadge">—</span>
+          <span class="hint" id="gestureFps">fps —</span>
+          <span class="hint" id="gestureStatusHint">等待手势代理状态…</span>
+        </span>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>摄像头画面</h3>
+            <span class="hint">GET /api/v1/gesture/frame</span>
+          </div>
+          <div class="panel-body">
+            <div class="gesture-preview">
+              <img id="gesturePreview" alt="板子摄像头实时画面" hidden>
+              <p class="gesture-placeholder" id="gesturePlaceholder">暂无画面，点击「开启识别」后显示板子摄像头画面</p>
+            </div>
+            <div class="form-footer gesture-footer">
+              <button class="btn primary" type="button" id="gestureToggle">开启识别</button>
+              <span class="form-msg" id="gestureMsg"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>当前手势</h3>
+            <span class="hint" id="gestureUpdatedAt">尚未识别</span>
+          </div>
+          <div class="panel-body">
+            <div class="gesture-current">
+              <strong id="gestureLabel">—</strong>
+              <span id="gestureConfidence">—</span>
+            </div>
+            <p class="gesture-code" id="gestureCode">gesture_id：—</p>
+            <div class="gesture-error hidden" id="gestureError"></div>
+            <div class="section-head gesture-history-head">
+              <h2>最近识别历史</h2>
+              <span class="hint">按时间倒序，最多 10 条</span>
+            </div>
+            <div class="gesture-history" id="gestureHistory">
+              <p class="empty">暂无识别记录。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel note-panel">
+        <h3>说明</h3>
+        <ul class="note-list">
+          <li>画面与手势类别由板子上常驻的 <code>robot_agent</code>（MediaPipe）产出，经后端 <code>GET /api/v1/gesture/*</code> 透传。</li>
+          <li>只有在「手势识别」视图且开启自动刷新时才会轮询，切换到其他视图会立即停止，避免持续占用板子摄像头。</li>
+          <li>状态为 <code>ERROR</code> 时多为摄像头被 <code>Face.ipynb</code> 等程序占用，请先释放摄像头再重新开启识别。</li>
         </ul>
       </div>
     </section>

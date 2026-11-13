@@ -63,6 +63,96 @@ public class RobotAgentClient {
         return send("POST", "/stop");
     }
 
+    // ---------- 手势识别（摄像头画面 + 手势类别） ----------
+
+    public Map<String, Object> gestureStatus() {
+        return send("GET", "/gesture/status");
+    }
+
+    public Map<String, Object> gestureLatest() {
+        return send("GET", "/gesture/latest");
+    }
+
+    /** 开启识别；板子已在识别时返回已运行状态，不视为错误。 */
+    public Map<String, Object> gestureStart() {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/gesture/start"))
+                .timeout(requestTimeout)
+                .header("Accept", "application/json")
+                .method("POST", HttpRequest.BodyPublishers.noBody())
+                .build();
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 409) {
+                return Map.of("status", "ALREADY_RUNNING");
+            }
+            return parse(response, "/gesture/start");
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (ConnectException | HttpTimeoutException exception) {
+            throw unavailable(exception);
+        } catch (IOException exception) {
+            throw unavailable(exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE",
+                    "机械臂代理请求被中断", null);
+        }
+    }
+
+    public Map<String, Object> gestureStop() {
+        return send("POST", "/gesture/stop");
+    }
+
+    /** 最新一帧 JPEG；还没有画面时返回 null。 */
+    public byte[] gestureFrame() {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/gesture/frame"))
+                .timeout(requestTimeout)
+                .method("GET", HttpRequest.BodyPublishers.noBody())
+                .build();
+        try {
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() == 200) {
+                return response.body();
+            }
+            if (response.statusCode() == 404) {
+                return null;
+            }
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "ROBOT_AGENT_ERROR",
+                    "机械臂代理返回状态 " + response.statusCode(), null);
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (ConnectException | HttpTimeoutException exception) {
+            throw unavailable(exception);
+        } catch (IOException exception) {
+            throw unavailable(exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE",
+                    "机械臂代理请求被中断", null);
+        }
+    }
+
+    private Map<String, Object> parse(HttpResponse<String> response, String path) throws IOException {
+        Map<String, Object> body = response.body() == null || response.body().isBlank()
+                ? Map.of()
+                : MAPPER.readValue(response.body(), MAP_TYPE);
+        int status = response.statusCode();
+        if (status >= 200 && status < 300) {
+            return body;
+        }
+        if (status == 404) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "ACTION_NOT_FOUND",
+                    "未知的机械臂动作：" + path.substring(path.lastIndexOf('/') + 1), null);
+        }
+        throw new ApiException(HttpStatus.BAD_GATEWAY, "ROBOT_AGENT_ERROR",
+                "机械臂代理返回状态 " + status, null);
+    }
+
+    private ApiException unavailable(Exception exception) {
+        return new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE",
+                "无法连接机械臂代理（" + baseUrl + "）：" + exception.getMessage(), null);
+    }
+
     private Map<String, Object> send(String method, String path) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .timeout(requestTimeout)

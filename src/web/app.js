@@ -5,6 +5,9 @@
 const API_BASE = (new URLSearchParams(location.search).get('api') || '/api/v1').replace(/\/+$/, '');
 const POLL_INTERVAL = 2000;
 const MAX_EVENTS = 100;
+const GESTURE_POLL_INTERVAL = 800;
+const GESTURE_FRAME_INTERVAL = 300;
+const MAX_GESTURE_HISTORY = 10;
 
 const VIEW_META = {
   overview: { title: '系统概览', subtitle: '机械臂、服务与分拣任务的整体运行状态' },
@@ -12,6 +15,7 @@ const VIEW_META = {
   statistics: { title: '分类统计', subtitle: '任务成功率与识别类别分布' },
   exceptions: { title: '异常日志', subtitle: '坐标越界、安全拦截与任务失败的可观测记录' },
   robot: { title: '机械臂控制', subtitle: '后端转发到板子 robot_agent，点击按钮即执行真实动作' },
+  gesture: { title: '手势识别', subtitle: '板子摄像头实时识别，画面与手势类别经后端透传' },
   tasks: { title: '任务受理', subtitle: '提交分拣任务、查询结果与软件安全停止' },
 };
 
@@ -30,6 +34,13 @@ const HEALTH_LABELS = {
   BUSY: '忙碌',
   SAFE_MODE: '安全模式',
   OFFLINE: '离线',
+};
+
+const GESTURE_STATUS_LABELS = {
+  STOPPED: '已停止',
+  STARTING: '启动中',
+  RUNNING: '识别中',
+  ERROR: '异常',
 };
 
 const ARM_STATE_LABELS = {
@@ -103,6 +114,20 @@ const state = {
     error: null,
     pending: '',
     inFlight: false,
+  },
+  gesture: {
+    status: '',
+    running: false,
+    error: null,
+    fps: null,
+    gesture: null,
+    message: '',
+    pending: '',
+    inFlight: false,
+    frameUrl: '',
+    frameLoading: false,
+    latestTimer: null,
+    frameTimer: null,
   },
 };
 
@@ -204,6 +229,11 @@ const api = {
   robotState: () => api.request('/robot/state'),
   runRobotAction: action => api.request(`/robot/actions/${encodeURIComponent(action)}`, { method: 'POST' }),
   robotStop: () => api.request('/robot/stop', { method: 'POST' }),
+  gestureStatus: () => api.request('/gesture/status'),
+  gestureLatest: () => api.request('/gesture/latest'),
+  gestureStart: () => api.request('/gesture/start', { method: 'POST' }),
+  gestureStop: () => api.request('/gesture/stop', { method: 'POST' }),
+  gestureFrameUrl: () => `${API_BASE}/gesture/frame?t=${Date.now()}`,
 };
 
 /* ------------------------------ 渲染 ------------------------------ */
@@ -685,6 +715,189 @@ async function loadRobotActions(force = false) {
   }
 }
 
+/* ------------------------------ 手势识别 ------------------------------ */
+function gesturePercent(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return '—';
+  return `${(num > 1 ? num : num * 100).toFixed(1)}%`;
+}
+
+function renderGesture() {
+  const gestureState = state.gesture;
+  const status = String(gestureState.status || (gestureState.running ? 'RUNNING' : 'STOPPED')).toUpperCase();
+  const running = gestureState.running || status === 'RUNNING' || status === 'STARTING';
+
+  const badge = $('#gestureStatusBadge');
+  if (badge) {
+    badge.className = `badge badge-gesture-${status.toLowerCase()}`;
+    badge.textContent = GESTURE_STATUS_LABELS[status] || status;
+  }
+
+  const fpsLabel = $('#gestureFps');
+  if (fpsLabel) {
+    fpsLabel.textContent = gestureState.fps === null ? 'fps —' : `fps ${gestureState.fps.toFixed(1)}`;
+  }
+
+  const statusHint = $('#gestureStatusHint');
+  if (statusHint) {
+    statusHint.textContent = gestureState.status
+      ? running ? '板子摄像头识别中' : '未在识别'
+      : '等待手势代理状态…';
+  }
+
+  const toggle = $('#gestureToggle');
+  if (toggle) {
+    toggle.textContent = running ? '关闭识别' : '开启识别';
+    toggle.disabled = Boolean(gestureState.pending);
+    toggle.classList.toggle('primary', !running);
+    toggle.classList.toggle('danger', running);
+  }
+
+  const message = $('#gestureMsg');
+  if (message) {
+    if (gestureState.pending === 'start') {
+      setFormMessage(message, '正在开启识别…');
+    } else if (gestureState.pending === 'stop') {
+      setFormMessage(message, '正在关闭识别…');
+    } else if (status === 'ERROR') {
+      setFormMessage(message, '识别异常，请检查摄像头占用情况', 'error');
+    } else {
+      setFormMessage(message, running ? '识别运行中，画面每 300ms 刷新。' : '识别未开启。', running ? 'ok' : '');
+    }
+  }
+
+  const current = gestureState.gesture || null;
+  const label = $('#gestureLabel');
+  if (label) label.textContent = (current && (current.label || current.gesture_id)) || '—';
+  const confidence = $('#gestureConfidence');
+  if (confidence) confidence.textContent = current ? gesturePercent(current.confidence) : '—';
+  const code = $('#gestureCode');
+  if (code) code.textContent = `gesture_id：${(current && current.gesture_id) || '—'}`;
+  const updated = $('#gestureUpdatedAt');
+  if (updated) updated.textContent = current ? `更新于 ${formatClock(current.updated_at)}` : '尚未识别';
+
+  const errorBox = $('#gestureError');
+  if (errorBox) {
+    const detail = gestureState.error || (status === 'ERROR' ? '手势代理返回异常状态' : '');
+    if (detail) {
+      errorBox.classList.remove('hidden');
+      errorBox.innerHTML = `<strong>识别异常：</strong>${escapeHtml(detail)}<span>常见原因：摄像头被 Face.ipynb 等程序占用，需先释放摄像头后再重试。</span>`;
+    } else {
+      errorBox.classList.add('hidden');
+      errorBox.textContent = '';
+    }
+  }
+
+  const historyBox = $('#gestureHistory');
+  if (historyBox) {
+    const history = Array.isArray(current && current.history) ? current.history.slice() : [];
+    history.sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime());
+    const list = history.slice(0, MAX_GESTURE_HISTORY);
+    if (!list.length) {
+      historyBox.innerHTML = '<p class="empty">暂无识别记录。</p>';
+    } else {
+      historyBox.innerHTML = list.map(item => `
+        <span class="gesture-chip" title="${escapeHtml(formatTime(item.at))}">
+          <b>${escapeHtml(item.label || item.gesture_id || '—')}</b>
+          <span class="mono">${escapeHtml(item.gesture_id || '—')}</span>
+          <em>${escapeHtml(gesturePercent(item.confidence))}</em>
+        </span>`).join('');
+    }
+  }
+}
+
+async function refreshGesture() {
+  const gestureState = state.gesture;
+  if (gestureState.inFlight) return;
+  gestureState.inFlight = true;
+  try {
+    const data = await api.gestureStatus();
+    if (data) {
+      gestureState.status = String(data.status || '').toUpperCase() || gestureState.status;
+      gestureState.running = typeof data.running === 'boolean' ? data.running : gestureState.status === 'RUNNING';
+      gestureState.error = data.error || null;
+      const fps = Number(data.fps);
+      gestureState.fps = data.fps === null || data.fps === undefined || !Number.isFinite(fps) ? null : fps;
+      gestureState.gesture = data.gesture || null;
+    }
+  } catch (error) {
+    gestureState.error = error.message || '手势状态获取失败';
+  } finally {
+    gestureState.inFlight = false;
+  }
+  renderGesture();
+}
+
+async function loadGestureFrame() {
+  const gestureState = state.gesture;
+  if (gestureState.frameLoading) return;
+  gestureState.frameLoading = true;
+  try {
+    const response = await fetch(api.gestureFrameUrl(), { cache: 'no-store' });
+    if (response.status === 204) return;
+    if (!response.ok) throw new Error(`画面获取失败（HTTP ${response.status}）`);
+    const blob = await response.blob();
+    if (!blob || !blob.size) return;
+    const url = URL.createObjectURL(blob);
+    const previous = gestureState.frameUrl;
+    gestureState.frameUrl = url;
+    const image = $('#gesturePreview');
+    if (image) {
+      image.src = url;
+      image.hidden = false;
+    }
+    const placeholder = $('#gesturePlaceholder');
+    if (placeholder) placeholder.hidden = true;
+    if (previous) URL.revokeObjectURL(previous);
+  } catch {
+    // 单帧失败不打断轮询，下一轮自动重试
+  } finally {
+    gestureState.frameLoading = false;
+  }
+}
+
+function clearGestureFrame() {
+  const gestureState = state.gesture;
+  if (gestureState.frameUrl) {
+    URL.revokeObjectURL(gestureState.frameUrl);
+    gestureState.frameUrl = '';
+  }
+  const image = $('#gesturePreview');
+  if (image) {
+    image.removeAttribute('src');
+    image.hidden = true;
+  }
+  const placeholder = $('#gesturePlaceholder');
+  if (placeholder) placeholder.hidden = false;
+}
+
+function startGesturePolling() {
+  stopGesturePolling();
+  if (state.view !== 'gesture' || !state.autoRefresh) return;
+  refreshGesture();
+  loadGestureFrame();
+  state.gesture.latestTimer = setInterval(() => {
+    if (state.view !== 'gesture' || !state.autoRefresh || document.hidden) return;
+    refreshGesture();
+  }, GESTURE_POLL_INTERVAL);
+  state.gesture.frameTimer = setInterval(() => {
+    if (state.view !== 'gesture' || !state.autoRefresh || document.hidden) return;
+    loadGestureFrame();
+  }, GESTURE_FRAME_INTERVAL);
+}
+
+function stopGesturePolling() {
+  const gestureState = state.gesture;
+  if (gestureState.latestTimer) {
+    clearInterval(gestureState.latestTimer);
+    gestureState.latestTimer = null;
+  }
+  if (gestureState.frameTimer) {
+    clearInterval(gestureState.frameTimer);
+    gestureState.frameTimer = null;
+  }
+}
+
 function renderAll() {
   renderConnection();
   renderHealth();
@@ -734,6 +947,7 @@ async function refresh(manual = false) {
     $('#updatedAt').textContent = `更新于 ${formatClock(new Date().toISOString())}`;
     renderAll();
     if (state.view === 'robot') refreshRobot();
+    if (state.view === 'gesture') refreshGesture();
   } catch (error) {
     state.online = false;
     renderConnection();
@@ -763,6 +977,12 @@ function switchView(view) {
     loadRobotActions();
     refreshRobot();
   }
+  if (view === 'gesture') {
+    renderGesture();
+    startGesturePolling();
+  } else {
+    stopGesturePolling();
+  }
 }
 
 /* ------------------------------ 交互绑定 ------------------------------ */
@@ -779,7 +999,12 @@ function bindRefresh() {
   $('#refreshBtn').addEventListener('click', () => refresh(true));
   $('#autoRefresh').addEventListener('change', event => {
     state.autoRefresh = event.target.checked;
-    if (state.autoRefresh) refresh(false);
+    if (state.autoRefresh) {
+      refresh(false);
+      if (state.view === 'gesture') startGesturePolling();
+    } else if (state.view === 'gesture') {
+      stopGesturePolling();
+    }
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) refresh(false);
@@ -1000,6 +1225,46 @@ function bindRobotControls() {
   reloadButton.addEventListener('click', () => loadRobotActions(true));
 }
 
+function bindGestureControls() {
+  const toggle = $('#gestureToggle');
+  if (!toggle) return;
+
+  toggle.addEventListener('click', async () => {
+    const gestureState = state.gesture;
+    if (gestureState.pending) return;
+    const status = String(gestureState.status || '').toUpperCase();
+    const running = gestureState.running || status === 'RUNNING' || status === 'STARTING';
+    gestureState.pending = running ? 'stop' : 'start';
+    renderGesture();
+    try {
+      if (running) {
+        await api.gestureStop();
+        gestureState.running = false;
+        gestureState.status = 'STOPPED';
+        gestureState.error = null;
+        gestureState.gesture = null;
+        stopGesturePolling();
+        clearGestureFrame();
+        toast('手势识别已关闭', 'info');
+      } else {
+        await api.gestureStart();
+        gestureState.running = true;
+        gestureState.status = 'RUNNING';
+        gestureState.error = null;
+        toast('手势识别已开启', 'success');
+        startGesturePolling();
+      }
+    } catch (error) {
+      const detail = error.code ? `${error.code}：${error.message}` : error.message;
+      toast(detail || '手势识别操作失败', 'error');
+    } finally {
+      gestureState.pending = '';
+      renderGesture();
+      refreshGesture();
+    }
+  });
+}
+
 function init() {
   $('#apiBaseLabel').textContent = API_BASE;
   bindNavigation();
@@ -1010,7 +1275,9 @@ function init() {
   bindSafety();
   bindTaskQuery();
   bindRobotControls();
+  bindGestureControls();
   renderAll();
+  renderGesture();
   refresh(true);
   startPolling();
 }
