@@ -49,4 +49,3 @@ python3 vision/capture_blocks.py \
 ## 数据要求
 
 标注框和采集目标以[彩色方块数据集标注规范](../../docs/vision/DATASET_ANNOTATION_GUIDE.md)为准。每次保存前改变方块的位置、角度或朝向，避免连续近重复帧。当前项目目标为四类各至少 300 张有效图片；先完成已有标注统计，再按差额补采。
-

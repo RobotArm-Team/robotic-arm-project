@@ -2,4 +2,3 @@ recyclable
 hazardous
 kitchen
 other
-
