@@ -1,0 +1,14 @@
+{
+  "name": "robotarm-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "智能机械臂垃圾分拣管理看板（零依赖静态前端 + API 代理）",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

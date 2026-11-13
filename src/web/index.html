@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能机械臂垃圾分拣管理看板</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none">
+          <path d="M9 22V13l7-4 7 4v9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M13 18h6M16 15v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="16" cy="8" r="3" stroke="currentColor" stroke-width="2.2"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <strong>机械臂分拣</strong>
+        <span>管理看板 v0.1</span>
+      </div>
+    </div>
+
+    <nav class="nav" aria-label="主导航">
+      <button class="nav-item active" data-view="overview">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/></svg>
+        <span>系统概览</span>
+      </button>
+      <button class="nav-item" data-view="events">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M8 6h12M8 12h12M8 18h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="6" r="1.2" fill="currentColor"/><circle cx="4" cy="12" r="1.2" fill="currentColor"/><circle cx="4" cy="18" r="1.2" fill="currentColor"/></svg>
+        <span>实时事件</span>
+      </button>
+      <button class="nav-item" data-view="statistics">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span>分类统计</span>
+      </button>
+      <button class="nav-item" data-view="exceptions">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3.6 21 19.5H3L12 3.6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 9.5v4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1" fill="currentColor"/></svg>
+        <span>异常日志</span>
+      </button>
+      <button class="nav-item" data-view="tasks">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" stroke="currentColor" stroke-width="1.8"/><path d="m10 8.8 5 3.2-5 3.2V8.8Z" fill="currentColor"/></svg>
+        <span>任务受理</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="conn" id="connBadge">
+        <span class="conn-dot" id="connDot"></span>
+        <span id="connText">连接中…</span>
+      </div>
+      <div class="api-base" id="apiBaseLabel">/api/v1</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1 id="pageTitle">系统概览</h1>
+        <p id="pageSubtitle">机械臂、服务与分拣任务的整体运行状态</p>
+      </div>
+      <div class="topbar-actions">
+        <span class="updated" id="updatedAt">尚未刷新</span>
+        <label class="switch" title="每 2 秒自动拉取一次后端数据">
+          <input type="checkbox" id="autoRefresh" checked>
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span class="switch-label">自动刷新</span>
+        </label>
+        <button class="btn ghost" id="refreshBtn" type="button">立即刷新</button>
+      </div>
+    </header>
+
+    <div class="alert hidden" id="alertBar" role="alert"></div>
+
+    <!-- 系统概览 -->
+    <section class="view active" id="view-overview">
+      <div class="section-head">
+        <h2>系统状态</h2>
+        <span class="hint">来源：GET /api/v1/health</span>
+      </div>
+      <div class="grid grid-4" id="healthCards"></div>
+
+      <div class="section-head">
+        <h2>任务总览</h2>
+        <span class="hint" id="statsRange">—</span>
+      </div>
+      <div class="grid grid-4" id="statCards"></div>
+
+      <div class="grid grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>类别分布</h3>
+            <span class="hint">来源：识别事件 by_class</span>
+          </div>
+          <div class="panel-body" id="classBars"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h3>任务完成构成</h3>
+            <span class="hint">成功 / 失败</span>
+          </div>
+          <div class="panel-body donut-wrap">
+            <div class="donut" id="successDonut">
+              <div class="donut-center">
+                <strong id="donutRate">—</strong>
+                <span>成功率</span>
+              </div>
+            </div>
+            <div class="legend">
+              <div class="legend-item"><span class="dot success"></span>成功 <b id="legendSuccess">0</b></div>
+              <div class="legend-item"><span class="dot failure"></span>失败 <b id="legendFailure">0</b></div>
+              <div class="legend-item"><span class="dot rest"></span>其他状态 <b id="legendRest">0</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>最近事件</h3>
+          <button class="link" type="button" data-goto="events">查看全部</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+            <tr>
+              <th>时间</th>
+              <th>任务编号</th>
+              <th>状态</th>
+              <th>耗时</th>
+              <th>错误码</th>
+            </tr>
+            </thead>
+            <tbody id="recentEventsBody">
+            <tr><td colspan="5" class="empty">加载中…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 实时事件 -->
+    <section class="view" id="view-events">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>筛选条件</h3>
+          <span class="hint">GET /api/v1/events?task_id=&amp;status=&amp;limit=</span>
+        </div>
+        <div class="panel-body filters">
+          <label class="field">
+            <span>任务编号</span>
+            <input type="text" id="eventTaskId" placeholder="例如 task-1001" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>任务状态</span>
+            <select id="eventStatus">
+              <option value="">全部状态</option>
+              <option value="RECEIVED">已接收</option>
+              <option value="REJECTED">已拒绝</option>
+              <option value="EXECUTING">执行中</option>
+              <option value="RETRYING">重试中</option>
+              <option value="SUCCEEDED">成功</option>
+              <option value="FAILED">失败</option>
+              <option value="SAFE_MODE">安全模式</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>显示条数</span>
+            <select id="eventLimit">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <div class="filter-actions">
+            <button class="btn primary" type="button" id="eventApply">应用筛选</button>
+            <button class="btn ghost" type="button" id="eventReset">重置</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>分拣事件</h3>
+          <span class="hint" id="eventCount">0 条</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+            <tr>
+              <th>时间</th>
+              <th>任务编号</th>
+              <th>状态</th>
+              <th>机械臂</th>
+              <th>类别</th>
+              <th>耗时</th>
+              <th>重试</th>
+              <th>视觉复核</th>
+              <th>错误码</th>
+            </tr>
+            </thead>
+            <tbody id="eventsBody">
+            <tr><td colspan="9" class="empty">加载中…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 分类统计 -->
+    <section class="view" id="view-statistics">
+      <div class="section-head">
+        <h2>汇总指标</h2>
+        <span class="hint" id="statisticsRange">—</span>
+      </div>
+      <div class="grid grid-4" id="statisticsCards"></div>
+
+      <div class="grid grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>类别数量排行</h3>
+            <span class="hint">GET /api/v1/statistics/summary</span>
+          </div>
+          <div class="panel-body" id="statisticsBars"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h3>类别明细</h3>
+            <span class="hint">数量与占比</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+              <tr>
+                <th>类别</th>
+                <th>数量</th>
+                <th>占比</th>
+              </tr>
+              </thead>
+              <tbody id="classTableBody">
+              <tr><td colspan="3" class="empty">暂无识别数据</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel note-panel">
+        <h3>口径说明</h3>
+        <ul class="note-list">
+          <li>任务总数、成功数、失败数来自 <code>sort_task</code> 表，失败数包含 <code>FAILED</code> 与 <code>SAFE_MODE</code>。</li>
+          <li>类别数量来自 <code>detection_event</code> 表；视觉侧尚未写入识别事件时该区域会显示为空。</li>
+          <li>统计区间为最早任务创建时间至当前时间，展示刷新间隔约 2 秒。</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 异常日志 -->
+    <section class="view" id="view-exceptions">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>筛选条件</h3>
+          <span class="hint">异常由事件中的错误码与失败状态归纳</span>
+        </div>
+        <div class="panel-body filters">
+          <label class="field">
+            <span>关键词</span>
+            <input type="text" id="exceptionKeyword" placeholder="任务编号或错误码" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>异常类型</span>
+            <select id="exceptionType">
+              <option value="">全部异常</option>
+              <option value="WORKSPACE_REJECTED">坐标越界</option>
+              <option value="SAFE_MODE_ACTIVE">安全模式拦截</option>
+              <option value="INVALID_ARM_ID">机械臂编号无效</option>
+              <option value="VALIDATION_ERROR">参数校验失败</option>
+              <option value="TASK_NOT_FOUND">任务不存在</option>
+              <option value="INTERNAL_ERROR">服务内部错误</option>
+              <option value="STATUS_FAILED">任务失败</option>
+              <option value="STATUS_SAFE_MODE">安全模式停机</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>显示条数</span>
+            <select id="exceptionLimit">
+              <option value="20">20</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <div class="filter-actions">
+            <button class="btn primary" type="button" id="exceptionApply">应用筛选</button>
+            <button class="btn ghost" type="button" id="exceptionReset">重置</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-3" id="exceptionCards"></div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>异常明细</h3>
+          <span class="hint" id="exceptionCount">0 条</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+            <tr>
+              <th>时间</th>
+              <th>任务编号</th>
+              <th>异常类型</th>
+              <th>状态</th>
+              <th>说明</th>
+              <th>处理结果</th>
+            </tr>
+            </thead>
+            <tbody id="exceptionBody">
+            <tr><td colspan="6" class="empty">加载中…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel note-panel">
+        <h3>接口缺口说明</h3>
+        <p>当前后端契约未提供独立的异常查询接口（<code>/api/exceptions</code>），因此本页从 <code>/api/v1/events</code> 中筛选带错误码或失败状态的事件。异常明细（模块、是否重试、最终结果）已持久化在 <code>exception_event</code> 表，待接口补齐后可直接切换数据源。</p>
+      </div>
+    </section>
+
+    <!-- 任务受理 -->
+    <section class="view" id="view-tasks">
+      <div class="grid grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>新建分拣任务</h3>
+            <span class="hint">POST /api/v1/tasks</span>
+          </div>
+          <form class="panel-body form" id="createTaskForm" novalidate>
+            <div class="form-row">
+              <label class="field">
+                <span>任务编号 task_id</span>
+                <input type="text" name="task_id" id="createTaskId" required autocomplete="off">
+              </label>
+              <label class="field">
+                <span>机械臂 arm_id</span>
+                <select name="arm_id">
+                  <option value="arm_1">arm_1</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-row form-row-3">
+              <label class="field">
+                <span>X 坐标 (mm)</span>
+                <input type="number" name="x_mm" value="120" step="0.1" required>
+              </label>
+              <label class="field">
+                <span>Y 坐标 (mm)</span>
+                <input type="number" name="y_mm" value="80" step="0.1" required>
+              </label>
+              <label class="field">
+                <span>Z 坐标 (mm)</span>
+                <input type="number" name="z_mm" value="15" step="0.1" required>
+              </label>
+            </div>
+            <div class="form-row">
+              <label class="field">
+                <span>标定编号 calibration_id</span>
+                <input type="text" name="calibration_id" value="calib-001" required autocomplete="off">
+              </label>
+              <label class="field">
+                <span>投放箱 bin_id</span>
+                <select name="bin_id">
+                  <option value="bin_recyclable">可回收物</option>
+                  <option value="bin_hazardous">有害垃圾</option>
+                  <option value="bin_kitchen">厨余垃圾</option>
+                  <option value="bin_other">其他垃圾</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-row">
+              <label class="field">
+                <span>超时时间 timeout_ms</span>
+                <input type="number" name="timeout_ms" value="15000" min="1" step="1" required>
+              </label>
+              <label class="field checkbox-field">
+                <span>工作区校验 workspace_ok</span>
+                <label class="checkbox"><input type="checkbox" name="workspace_ok" checked> 目标点位于有效工作区内</label>
+              </label>
+            </div>
+            <div class="form-footer">
+              <button class="btn primary" type="submit" id="createTaskBtn">提交任务</button>
+              <button class="btn ghost" type="button" id="randomTaskBtn">随机任务编号</button>
+              <span class="form-msg" id="createTaskMsg"></span>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel danger-panel">
+          <div class="panel-head">
+            <h3>软件安全停止</h3>
+            <span class="hint">POST /api/v1/safety/stop</span>
+          </div>
+          <form class="panel-body form" id="safetyForm" novalidate>
+            <p class="panel-desc">写入系统状态为 <code>SAFE_MODE</code>，之后的任务请求将返回 409。现场 K2 急停始终拥有更高优先级。</p>
+            <label class="field">
+              <span>停止原因 reason</span>
+              <input type="text" name="reason" value="演示手动停止" required autocomplete="off">
+            </label>
+            <div class="form-footer">
+              <button class="btn danger" type="submit" id="safetyBtn">触发安全停止</button>
+              <span class="form-msg" id="safetyMsg"></span>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>任务查询</h3>
+          <span class="hint">GET /api/v1/tasks/{taskId}</span>
+        </div>
+        <div class="panel-body">
+          <div class="filters">
+            <label class="field">
+              <span>任务编号</span>
+              <input type="text" id="queryTaskId" placeholder="输入已提交的 task_id" autocomplete="off">
+            </label>
+            <div class="filter-actions">
+              <button class="btn primary" type="button" id="queryTaskBtn">查询任务</button>
+            </div>
+          </div>
+          <div id="taskResult" class="task-result">
+            <p class="empty">尚未查询任务。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
