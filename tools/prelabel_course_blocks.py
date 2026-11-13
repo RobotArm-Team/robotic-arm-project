@@ -1,10 +1,11 @@
-"""Create review-only LabelMe draft boxes for the four course block colors.
+"""Create review-only LabelMe solid-color-face boxes for course blocks.
 
 Usage:
     python tools/prelabel_course_blocks.py SOURCE_IMAGES OUTPUT_IMAGES
 
 The output directory must not exist. Each image is copied beside its draft JSON.
-Every draft must be checked in Model Adapter before it counts as a label.
+Only the large blue/red/green/yellow face is drafted. Every draft must be
+checked in Model Adapter before it counts as a label.
 """
 
 from __future__ import annotations
@@ -20,12 +21,29 @@ import numpy as np
 
 
 COLORS = (
-    ("recyclable", ((90, 55, 35), (135, 255, 255))),
+    # Blue-tinted white side panels otherwise merge with the blue top face.
+    ("recyclable", ((90, 100, 35), (135, 255, 255))),
     ("hazardous", ((0, 75, 35), (13, 255, 255))),
     ("kitchen", ((36, 45, 30), (88, 255, 255))),
     ("other", ((17, 65, 65), (42, 255, 255))),
 )
 MIN_FACE_AREA = 2600
+MIN_BROAD_ROWS = 60
+
+
+def longest_true_run(values: np.ndarray) -> tuple[int, int] | None:
+    """Return the inclusive bounds of the longest consecutive True run."""
+    best = None
+    start = None
+    for index, value in enumerate(values):
+        if value and start is None:
+            start = index
+        if start is not None and (not value or index == len(values) - 1):
+            end = index if value and index == len(values) - 1 else index - 1
+            if best is None or end - start > best[1] - best[0]:
+                best = (start, end)
+            start = None
+    return best
 
 
 def read_image(path: Path) -> np.ndarray:
@@ -52,7 +70,6 @@ def draft_boxes(image: np.ndarray) -> list[dict]:
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     kernel_open = np.ones((5, 5), dtype=np.uint8)
     kernel_close = np.ones((7, 7), dtype=np.uint8)
-    kernel_face = np.ones((11, 11), dtype=np.uint8)
     shapes = []
     for label, mask in color_masks(hsv):
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open)
@@ -62,25 +79,35 @@ def draft_boxes(image: np.ndarray) -> list[dict]:
             x, y, face_width, face_height, area = map(int, stats[component])
             if area < MIN_FACE_AREA or face_width < 45 or face_height < 35:
                 continue
-            # Thin colored outlines can continue down the illustrated sides.
-            # Opening with a larger kernel isolates the broad colored face.
-            face = cv2.morphologyEx(
-                mask[y : y + face_height, x : x + face_width],
-                cv2.MORPH_OPEN,
-                kernel_face,
-            )
-            face_count, _, face_stats, _ = cv2.connectedComponentsWithStats(face)
-            if face_count > 1:
-                core = max(face_stats[1:], key=lambda row: row[cv2.CC_STAT_AREA])
-                solid_bottom = y + int(core[cv2.CC_STAT_TOP] + core[cv2.CC_STAT_HEIGHT])
+            component_mask = mask[y : y + face_height, x : x + face_width]
+            row_pixels = np.count_nonzero(component_mask, axis=1)
+            # A real top face contains a long consecutive run of broad,
+            # solid-color rows. Printed pictures and slightly tinted white
+            # side faces do not, so they are discarded here.
+            broad_run = longest_true_run(row_pixels >= face_width * 0.35)
+            if broad_run is None or broad_run[1] - broad_run[0] + 1 < MIN_BROAD_ROWS:
+                continue
+
+            # Course labels target only the large solid-color face, not the
+            # whole cube. A face seen as a diamond narrows near both tips, so
+            # keep its full color-component height. A near-front-on face has
+            # its broad run at the top; stop shortly after that run so colored
+            # outlines down the illustrated sides cannot lengthen the box.
+            if broad_run[0] >= 20:
+                face_bottom = face_height
             else:
-                solid_bottom = y + face_height
-            # The visible color face is normally the top face. Include the
-            # illustrated side faces in a deliberately reviewable draft box.
-            left = max(0, x - 12)
-            top = max(0, y - 8)
-            right = min(width - 1, x + face_width + 12)
-            bottom = min(height - 1, solid_bottom + round(face_width * 0.42))
+                face_bottom = min(
+                    face_height,
+                    broad_run[1] + 1 + round(face_width * 0.08),
+                )
+            face_pixels = np.argwhere(component_mask[:face_bottom] > 0)
+            face_left = int(face_pixels[:, 1].min())
+            face_right = int(face_pixels[:, 1].max()) + 1
+            padding = 5
+            left = max(0, x + face_left - padding)
+            top = max(0, y - padding)
+            right = min(width - 1, x + face_right + padding)
+            bottom = min(height - 1, y + face_bottom + padding)
             shapes.append(
                 {
                     "label": label,
