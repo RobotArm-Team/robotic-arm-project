@@ -30,7 +30,7 @@ public class TaskController {
     }
 
     @GetMapping("/{taskId}")
-    public PickResult get(@PathVariable String taskId) {
+    public PickResult get(@PathVariable("taskId") String taskId) {
         return taskService.get(taskId);
     }
 }

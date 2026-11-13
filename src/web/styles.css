@@ -922,6 +922,55 @@ code {
   word-break: break-all;
 }
 
+/* ---------- 机械臂动作面板 ---------- */
+.robot-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.robot-action {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 12px 15px;
+  border-color: var(--border);
+  background: linear-gradient(180deg, rgba(20, 30, 48, 0.85), rgba(12, 19, 32, 0.85));
+  text-align: left;
+}
+
+.robot-action strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #dbe7f6;
+}
+
+.robot-action span {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  letter-spacing: 0.02em;
+}
+
+.robot-action:hover:not(:disabled) {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: linear-gradient(180deg, rgba(26, 42, 66, 0.9), rgba(14, 24, 40, 0.9));
+}
+
+.robot-action.running {
+  border-color: rgba(251, 191, 36, 0.55);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.robot-action.running strong {
+  color: #fcd34d;
+}
+
+.robot-footer {
+  margin-top: 18px;
+}
+
 /* ---------- 说明面板 ---------- */
 .note-panel {
   padding: 18px;

@@ -11,6 +11,7 @@ const VIEW_META = {
   events: { title: '实时事件', subtitle: '按时间倒序展示后端事件，支持任务编号与状态筛选' },
   statistics: { title: '分类统计', subtitle: '任务成功率与识别类别分布' },
   exceptions: { title: '异常日志', subtitle: '坐标越界、安全拦截与任务失败的可观测记录' },
+  robot: { title: '机械臂控制', subtitle: '后端转发到板子 robot_agent，点击按钮即执行真实动作' },
   tasks: { title: '任务受理', subtitle: '提交分拣任务、查询结果与软件安全停止' },
 };
 
@@ -68,7 +69,20 @@ const ERROR_LABELS = {
   ARM_TIMEOUT: '机械臂通信或动作超时',
   GRAB_FAILED: '抓取失败',
   SERVICE_UNAVAILABLE: '下游服务不可用',
+  ROBOT_BUSY: '机械臂正在执行其他动作',
+  ACTION_NOT_FOUND: '未知的机械臂动作',
+  ROBOT_AGENT_ERROR: '机械臂代理返回异常',
 };
+
+// 板子 robot_agent.py 未连通时的兜底动作清单，保证按钮始终可见。
+const ROBOT_ACTION_FALLBACK = [
+  { name: 'home', label: '归位', duration_ms: 1000 },
+  { name: 'dance', label: '跳舞', duration_ms: 9000 },
+  { name: 'stack', label: '积木堆叠', duration_ms: 26000 },
+  { name: 'wave', label: '挥手', duration_ms: 4000 },
+  { name: 'clamp_open', label: '夹爪张开', duration_ms: 1000 },
+  { name: 'clamp_close', label: '夹爪闭合', duration_ms: 1000 },
+];
 
 const state = {
   view: 'overview',
@@ -81,6 +95,15 @@ const state = {
   eventFilter: { taskId: '', status: '', limit: 20 },
   exceptionFilter: { keyword: '', type: '', limit: 50 },
   queryTask: null,
+  robot: {
+    health: null,
+    agent: null,
+    actions: ROBOT_ACTION_FALLBACK,
+    actionsLoaded: false,
+    error: null,
+    pending: '',
+    inFlight: false,
+  },
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -176,6 +199,11 @@ const api = {
   createTask: payload => api.request('/tasks', { method: 'POST', body: payload }),
   getTask: taskId => api.request(`/tasks/${encodeURIComponent(taskId)}`),
   safetyStop: reason => api.request('/safety/stop', { method: 'POST', body: { reason } }),
+  robotHealth: () => api.request('/robot/health'),
+  robotActions: () => api.request('/robot/actions'),
+  robotState: () => api.request('/robot/state'),
+  runRobotAction: action => api.request(`/robot/actions/${encodeURIComponent(action)}`, { method: 'POST' }),
+  robotStop: () => api.request('/robot/stop', { method: 'POST' }),
 };
 
 /* ------------------------------ 渲染 ------------------------------ */
@@ -514,6 +542,149 @@ function renderTaskResult() {
     <pre class="result-json">servo_state = ${escapeHtml(JSON.stringify(task.servo_state ?? {}, null, 2))}</pre>`;
 }
 
+/* ------------------------------ 机械臂控制 ------------------------------ */
+function robotActionLabel(name) {
+  const action = state.robot.actions.find(item => item.name === name);
+  return action ? action.label : name;
+}
+
+function renderRobotButtons() {
+  const grid = $('#robotActionGrid');
+  if (!grid) return;
+  const signature = state.robot.actions.map(action => action.name).join(',');
+  if (grid.dataset.signature === signature) return;
+  grid.dataset.signature = signature;
+  grid.innerHTML = state.robot.actions.map(action => `
+    <button class="btn robot-action" type="button" data-action="${escapeHtml(action.name)}">
+      <strong>${escapeHtml(robotActionLabel(action.name))}</strong>
+      <span>${escapeHtml(action.name)} · ${escapeHtml(formatDuration(action.duration_ms))}</span>
+    </button>`).join('');
+}
+
+function renderRobot() {
+  const robot = state.robot;
+  const health = robot.health;
+  const agent = robot.agent;
+  const offline = !health;
+  const busy = Boolean(agent && agent.busy);
+  const runningAction = busy ? String(agent.action || '') : '';
+  const dryRun = Boolean((agent && agent.dry_run) || (health && health.dry_run));
+  const pending = Boolean(robot.pending);
+
+  const cards = $('#robotCards');
+  if (cards) {
+    cards.innerHTML = [
+      renderCard({
+        label: '代理连接',
+        value: offline ? '离线' : '已连接',
+        hint: offline ? '后端无法访问板子 5005 端口' : `robot_agent · ${health.status || 'READY'}`,
+        tone: offline ? 'tone-danger' : 'tone-success',
+        small: true,
+      }),
+      renderCard({
+        label: '执行状态',
+        value: offline ? '—' : busy ? '执行中' : '空闲',
+        hint: busy ? `当前动作：${robotActionLabel(runningAction)}` : '可以下发新动作',
+        tone: busy ? 'tone-warn' : 'tone-success',
+        small: true,
+      }),
+      renderCard({
+        label: '运行模式',
+        value: offline ? '—' : dryRun ? '演练' : '实机',
+        hint: offline ? '—' : dryRun ? 'ROBOT_DRY_RUN=1，只记录不驱动舵机' : '舵机将真实动作，注意安全',
+        tone: offline ? '' : dryRun ? 'tone-purple' : 'tone-warn',
+        small: true,
+      }),
+      renderCard({
+        label: '最近错误',
+        value: agent && agent.last_error ? '有' : '无',
+        hint: agent && agent.last_error ? agent.last_error : offline ? '—' : '暂无异常',
+        tone: agent && agent.last_error ? 'tone-danger' : 'tone-success',
+        small: true,
+      }),
+    ].join('');
+  }
+
+  const statusHint = $('#robotStatusHint');
+  if (statusHint) {
+    if (offline) {
+      statusHint.textContent = '未连接机械臂代理，请确认板子上已启动 robot_agent.py';
+    } else {
+      statusHint.textContent = [
+        `状态 ${health.status || '—'}`,
+        dryRun ? '演练模式' : '实机驱动',
+        busy ? `正在执行 ${robotActionLabel(runningAction)}` : '空闲',
+      ].join(' · ');
+    }
+  }
+
+  renderRobotButtons();
+  $$('#robotActionGrid [data-action]').forEach(button => {
+    button.disabled = offline || busy || pending;
+    button.classList.toggle('running', busy && button.dataset.action === runningAction);
+  });
+
+  const stopButton = $('#robotStopBtn');
+  if (stopButton) stopButton.disabled = offline || pending;
+
+  const reloadButton = $('#robotReloadBtn');
+  if (reloadButton) reloadButton.disabled = pending;
+
+  const message = $('#robotMsg');
+  if (message) {
+    if (robot.pending === 'load') {
+      setFormMessage(message, '正在读取动作清单…');
+    } else if (robot.pending === 'stop') {
+      setFormMessage(message, '正在下发停止指令…');
+    } else if (robot.pending) {
+      setFormMessage(message, `正在下发「${robotActionLabel(robot.pending)}」…`);
+    } else if (offline) {
+      setFormMessage(message, robot.error ? robot.error.message : '代理不可用', 'error');
+    } else if (busy) {
+      setFormMessage(message, `执行中：${robotActionLabel(runningAction)}`, '');
+    } else {
+      setFormMessage(message, '就绪，可下发动作。', 'ok');
+    }
+  }
+}
+
+async function refreshRobot() {
+  if (state.robot.inFlight) return;
+  state.robot.inFlight = true;
+  try {
+    const [health, agent] = await Promise.all([api.robotHealth(), api.robotState()]);
+    state.robot.health = health;
+    state.robot.agent = agent;
+    state.robot.error = null;
+  } catch (error) {
+    state.robot.health = null;
+    state.robot.agent = null;
+    state.robot.error = error;
+  } finally {
+    state.robot.inFlight = false;
+  }
+  renderRobot();
+}
+
+async function loadRobotActions(force = false) {
+  if (state.robot.actionsLoaded && !force) return;
+  state.robot.pending = 'load';
+  renderRobot();
+  try {
+    const data = await api.robotActions();
+    const actions = Array.isArray(data && data.actions) ? data.actions : [];
+    state.robot.actions = actions.length ? actions : ROBOT_ACTION_FALLBACK;
+    state.robot.actionsLoaded = true;
+    state.robot.error = null;
+  } catch (error) {
+    state.robot.actions = state.robot.actions.length ? state.robot.actions : ROBOT_ACTION_FALLBACK;
+    state.robot.error = error;
+  } finally {
+    state.robot.pending = '';
+    renderRobot();
+  }
+}
+
 function renderAll() {
   renderConnection();
   renderHealth();
@@ -523,6 +694,7 @@ function renderAll() {
   renderExceptions();
   renderStatistics();
   renderTaskResult();
+  renderRobot();
 }
 
 /* ------------------------------ 提示 ------------------------------ */
@@ -561,6 +733,7 @@ async function refresh(manual = false) {
     state.online = true;
     $('#updatedAt').textContent = `更新于 ${formatClock(new Date().toISOString())}`;
     renderAll();
+    if (state.view === 'robot') refreshRobot();
   } catch (error) {
     state.online = false;
     renderConnection();
@@ -585,6 +758,11 @@ function switchView(view) {
   $$('.view').forEach(panel => panel.classList.toggle('active', panel.id === `view-${view}`));
   $('#pageTitle').textContent = VIEW_META[view].title;
   $('#pageSubtitle').textContent = VIEW_META[view].subtitle;
+  if (view === 'robot') {
+    renderRobot();
+    loadRobotActions();
+    refreshRobot();
+  }
 }
 
 /* ------------------------------ 交互绑定 ------------------------------ */
@@ -781,6 +959,47 @@ function bindTaskQuery() {
   });
 }
 
+function bindRobotControls() {
+  const grid = $('#robotActionGrid');
+  const stopButton = $('#robotStopBtn');
+  const reloadButton = $('#robotReloadBtn');
+
+  grid.addEventListener('click', async event => {
+    const button = event.target.closest('[data-action]');
+    if (!button || button.disabled) return;
+    const action = button.dataset.action;
+    state.robot.pending = action;
+    renderRobot();
+    try {
+      await api.runRobotAction(action);
+      toast(`已下发动作：${robotActionLabel(action)}`, 'success');
+    } catch (error) {
+      const detail = error.code ? `${error.code}：${error.message}` : error.message;
+      toast(detail || '动作下发失败', 'error');
+    } finally {
+      state.robot.pending = '';
+      await refreshRobot();
+    }
+  });
+
+  stopButton.addEventListener('click', async () => {
+    state.robot.pending = 'stop';
+    renderRobot();
+    try {
+      await api.robotStop();
+      toast('停止指令已下发，机械臂将归位', 'success');
+    } catch (error) {
+      const detail = error.code ? `${error.code}：${error.message}` : error.message;
+      toast(detail || '停止指令下发失败', 'error');
+    } finally {
+      state.robot.pending = '';
+      await refreshRobot();
+    }
+  });
+
+  reloadButton.addEventListener('click', () => loadRobotActions(true));
+}
+
 function init() {
   $('#apiBaseLabel').textContent = API_BASE;
   bindNavigation();
@@ -790,6 +1009,7 @@ function init() {
   bindCreateTask();
   bindSafety();
   bindTaskQuery();
+  bindRobotControls();
   renderAll();
   refresh(true);
   startPolling();
