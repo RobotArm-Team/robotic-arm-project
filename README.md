@@ -1,6 +1,6 @@
 # 智能机械臂垃圾分拣与管理系统
 
-> 基于计算机视觉的垃圾识别、固定工作区抓取、事件记录与 Web 管理系统。
+> 以彩色方块模拟四类垃圾的视觉识别、固定工作区抓取、事件记录与 Web 管理系统。
 > 课程项目仓库；当前处于需求冻结与工程骨架阶段，尚未宣称功能已实现。
 
 ## 项目目标
@@ -8,6 +8,8 @@
 系统完成一条可审计的闭环：
 
 `USB 摄像头 → YOLOv8 识别 → 手眼标定换算 → ROS2 / Arm_Lib 控制机械臂 → 事件落库 → Web 看板展示`
+
+课程实验用四种彩色方块分别代表可回收垃圾（蓝）、有害垃圾（红）、厨余垃圾（绿）和其他垃圾（黄）；模型识别与机械臂分拣的对象是这些方块。具体图文面与标签说明见[视觉数据集说明](docs/vision/COURSE_DATASET_NOTES.md)。
 
 除基础链路外，项目包含两个独立、可关闭的拓展：
 
@@ -47,6 +49,7 @@
 | 需求—任务—交付物追溯 | [docs/TRACEABILITY.md](docs/TRACEABILITY.md) |
 | 协作规则与 PR 流程 | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) |
 | 课程资料盘点与使用边界 | [docs/course-reference/COURSE_PLATFORM_MATERIALS.md](docs/course-reference/COURSE_PLATFORM_MATERIALS.md) |
+| 彩色方块与四类垃圾映射 | [docs/vision/COURSE_DATASET_NOTES.md](docs/vision/COURSE_DATASET_NOTES.md) |
 | OpenSpec 变更流程 | [openspec/README.md](openspec/README.md) |
 
 ## 目录结构
