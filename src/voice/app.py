@@ -76,7 +76,7 @@ def _build_mic_backend(args) -> Optional[RecognizerBackend]:
             be = VoskBackend(
                 model_path=args.vosk_model,
                 min_confidence=args.min_confidence,
-                grammar=None if args.no_grammar else DEFAULT_GRAMMAR,
+                grammar=DEFAULT_GRAMMAR if args.grammar else None,
             )
             be.validate()  # 提前校验依赖/模型，缺失时立即报错而非迭代时崩栈
             return be
@@ -110,8 +110,9 @@ def main() -> int:
                     help="ASR 引擎：vosk=离线中文(默认,适合国内)；google=Google Web Speech(需外网)；auto=优先 vosk")
     ap.add_argument("--vosk-model", type=str, default=None,
                     help="Vosk 中文模型目录路径（默认 src/voice/models/vosk-cn）")
-    ap.add_argument("--no-grammar", action="store_true",
-                    help="关闭 grammar 约束（自由解码，仅调试用；默认开启以抑制噪声误识别）")
+    ap.add_argument("--grammar", action="store_true",
+                    help="启用 grammar 受限严格模式（把解码锁死到已知命令短语，用于嘈杂展台）；"
+                         "默认关闭=自由解码，能识别任意话语、仅命令关键词触发")
     ap.add_argument("--min-confidence", type=float, default=0.5,
                     help="置信度门限：低于此值不触发（默认 0.5）")
     ap.add_argument("--cooldown-s", type=float, default=3.0, help="同命令冷却秒数（默认 3.0）")
@@ -123,8 +124,8 @@ def main() -> int:
         if backend is None:
             return 1
         print(
-            "[E2] 麦克风监听中：请对麦克风说\"帮我分类\"（每次最多等 4 秒，"
-            "Ctrl+C 退出）", file=sys.stderr,
+            "[E2] 麦克风监听中：说命令词才会触发机械臂，如「开始 / 帮我分类 / 暂停 / 复位 / 取消 / 急停」"
+            "（其它话语只显示不触发；Ctrl+C 退出）", file=sys.stderr,
         )
     elif args.wav_file:
         # 离线 WAV 识别走 Vosk（本路径不依赖麦克风/外网，适合回归与指标统计）
@@ -133,7 +134,7 @@ def main() -> int:
                 model_path=args.vosk_model,
                 min_confidence=args.min_confidence,
                 wav_path=args.wav_file,
-                grammar=None if args.no_grammar else DEFAULT_GRAMMAR,
+                grammar=DEFAULT_GRAMMAR if args.grammar else None,
             )
             backend.validate()
         except (ImportError, FileNotFoundError) as e:
