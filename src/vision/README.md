@@ -52,6 +52,27 @@ python3 vision/capture_blocks.py \
 
 上传后先运行 `check_200dk.py`。看到摄像头和依赖检查结果后，再决定是否开始标定或采集。
 
+## 实时识别联调（不控制机械臂）
+
+一次按键保存图片只用于采集和单帧验收。要实现“放入一个方块，稳定识别一次”的联调，运行两段独立程序：
+
+1. 在 200DK 上以 `ros-arm-env` 启动只读取帧服务；它只开放 `GET /health` 和 `GET /frame`，不导入 `Arm_Lib`：
+
+   ```bash
+   /root/miniconda3/envs/ros-arm-env/bin/python vision/camera_frame_server.py --port 5010
+   ```
+
+2. 在有本地 YOLO 权重和 GPU 的开发电脑上运行检测器。它连续读取 200DK 画面，默认要求 5 帧中的至少 4 帧类别一致、置信度至少 0.50，且方块离开 3 帧后才允许下一次确认：
+
+   ```powershell
+   .\.venv\Scripts\python.exe src\vision\realtime_detector.py `
+     --model models\block-baseline-v1-best.pt `
+     --frame-url http://192.168.137.100:5010/frame `
+     --preview
+   ```
+
+检测器只在终端输出符合 `DetectionResult` 的 JSON，不会创建 `PickTask` 或控制机械臂。后端若需要接收结果，须先由团队在 OpenAPI 中确定接收接口，再显式增加 `--callback-url`；不能把未约定的 URL 当成正式接口。
+
 ## 数据要求
 
 标注框和采集目标以[彩色方块数据集标注规范](../../docs/vision/DATASET_ANNOTATION_GUIDE.md)为准。每次保存前改变方块的位置、角度或朝向，避免连续近重复帧。当前项目目标为四类各至少 300 张有效图片；先完成已有标注统计，再按差额补采。
