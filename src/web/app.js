@@ -121,6 +121,8 @@ const state = {
     error: null,
     fps: null,
     gesture: null,
+    control: null,
+    controlPending: '',
     message: '',
     pending: '',
     inFlight: false,
@@ -233,6 +235,8 @@ const api = {
   gestureLatest: () => api.request('/gesture/latest'),
   gestureStart: () => api.request('/gesture/start', { method: 'POST' }),
   gestureStop: () => api.request('/gesture/stop', { method: 'POST' }),
+  gestureControlStart: () => api.request('/gesture/control/start', { method: 'POST' }),
+  gestureControlStop: () => api.request('/gesture/control/stop', { method: 'POST' }),
   gestureFrameUrl: () => `${API_BASE}/gesture/frame?t=${Date.now()}`,
 };
 
@@ -804,6 +808,64 @@ function renderGesture() {
         </span>`).join('');
     }
   }
+
+  renderGestureControl(gestureState);
+}
+
+function renderGestureControl(gestureState) {
+  const control = gestureState.control || null;
+  const enabled = Boolean(control && control.enabled);
+
+  const controlToggle = $('#gestureControlToggle');
+  if (controlToggle) {
+    controlToggle.textContent = enabled ? '关闭手势控制' : '开启手势控制';
+    controlToggle.disabled = Boolean(gestureState.controlPending);
+    controlToggle.classList.toggle('primary', !enabled);
+    controlToggle.classList.toggle('danger', enabled);
+  }
+
+  const controlState = $('#gestureControlState');
+  if (controlState) {
+    controlState.textContent = enabled
+      ? `已开启 · 已触发 ${control.count || 0} 次`
+      : control ? '未开启' : '等待数据…';
+  }
+
+  const controlMsg = $('#gestureControlMsg');
+  if (controlMsg) {
+    if (gestureState.controlPending === 'start') {
+      setFormMessage(controlMsg, '正在开启手势控制…');
+    } else if (gestureState.controlPending === 'stop') {
+      setFormMessage(controlMsg, '正在关闭手势控制…');
+    } else if (!control) {
+      setFormMessage(controlMsg, '');
+    } else if (enabled) {
+      setFormMessage(controlMsg,
+        `识别到手势即执行，最小置信度 ${control.min_confidence ?? '—'}，同一手势冷却 ${control.cooldown_s ?? '—'} 秒`, 'ok');
+    } else {
+      setFormMessage(controlMsg, '开启后手势会直接驱动机械臂，请确认动作范围内无人。');
+    }
+  }
+
+  const mappingBox = $('#gestureMap');
+  if (mappingBox) {
+    const mapping = Array.isArray(control && control.mapping) ? control.mapping : [];
+    mappingBox.innerHTML = mapping.length
+      ? mapping.map(item => `
+        <span class="gesture-chip" title="${escapeHtml(item.action)}">
+          <b>${escapeHtml(item.gesture_label || item.gesture_id)}</b>
+          <span class="mono">${escapeHtml(item.action_label || item.action)}</span>
+        </span>`).join('')
+      : '<p class="empty">等待联动配置…</p>';
+  }
+
+  const lastBox = $('#gestureControlLast');
+  if (lastBox) {
+    const last = control && control.last;
+    lastBox.textContent = last
+      ? `最近触发：${last.gesture_label || last.gesture_id} → ${last.action_label || last.action}（置信度 ${gesturePercent(last.confidence)}，${formatClock(last.at)}）`
+      : '最近触发：—';
+  }
 }
 
 async function refreshGesture() {
@@ -819,6 +881,7 @@ async function refreshGesture() {
       const fps = Number(data.fps);
       gestureState.fps = data.fps === null || data.fps === undefined || !Number.isFinite(fps) ? null : fps;
       gestureState.gesture = data.gesture || null;
+      gestureState.control = data.control || null;
     }
   } catch (error) {
     gestureState.error = error.message || '手势状态获取失败';
@@ -1261,6 +1324,50 @@ function bindGestureControls() {
       gestureState.pending = '';
       renderGesture();
       refreshGesture();
+    }
+  });
+
+  const controlToggle = $('#gestureControlToggle');
+  if (controlToggle) {
+    controlToggle.addEventListener('click', async () => {
+      const gestureState = state.gesture;
+      if (gestureState.controlPending) return;
+      const enabled = Boolean(gestureState.control && gestureState.control.enabled);
+      gestureState.controlPending = enabled ? 'stop' : 'start';
+      renderGesture();
+      try {
+        if (enabled) {
+          await api.gestureControlStop();
+          toast('手势控制已关闭', 'info');
+        } else {
+          await api.gestureControlStart();
+          toast('手势控制已开启，比出手势即可驱动机械臂', 'success');
+          if (state.view === 'gesture') startGesturePolling();
+        }
+      } catch (error) {
+        const detail = error.code ? `${error.code}：${error.message}` : error.message;
+        toast(detail || '手势控制操作失败', 'error');
+      } finally {
+        gestureState.controlPending = '';
+        renderGesture();
+        refreshGesture();
+      }
+    });
+  }
+
+  const stopAction = $('#gestureStopAction');
+  if (!stopAction) return;
+
+  stopAction.addEventListener('click', async () => {
+    stopAction.disabled = true;
+    try {
+      await api.robotStop();
+      toast('停止指令已下发，机械臂将归位', 'success');
+    } catch (error) {
+      const detail = error.code ? `${error.code}：${error.message}` : error.message;
+      toast(detail || '停止指令下发失败', 'error');
+    } finally {
+      stopAction.disabled = false;
     }
   });
 }

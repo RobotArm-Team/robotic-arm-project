@@ -103,6 +103,17 @@ public class RobotAgentClient {
         return send("POST", "/gesture/stop");
     }
 
+    // ---------- 手势联动机械臂动作 ----------
+
+    /** 开启联动：识别到手势后由板子直接执行对应动作。 */
+    public Map<String, Object> gestureControlStart() {
+        return send("POST", "/gesture/control/start");
+    }
+
+    public Map<String, Object> gestureControlStop() {
+        return send("POST", "/gesture/control/stop");
+    }
+
     /** 最新一帧 JPEG；还没有画面时返回 null。 */
     public byte[] gestureFrame() {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/gesture/frame"))

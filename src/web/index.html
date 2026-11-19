@@ -428,12 +428,33 @@
         </div>
       </div>
 
+      <div class="section-head">
+        <h2>手势控制机械臂</h2>
+        <span class="hint">识别到手势后自动执行对应动作，同一手势 3 秒冷却</span>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h3>联动开关</h3>
+          <span class="hint" id="gestureControlState">未开启</span>
+        </div>
+        <div class="panel-body">
+          <div class="gesture-control-actions">
+            <button class="btn primary" type="button" id="gestureControlToggle">开启手势控制</button>
+            <button class="btn danger" type="button" id="gestureStopAction">停止当前动作</button>
+            <span class="form-msg" id="gestureControlMsg"></span>
+          </div>
+          <div class="gesture-map" id="gestureMap"></div>
+          <p class="gesture-last" id="gestureControlLast">最近触发：—</p>
+        </div>
+      </div>
+
       <div class="panel note-panel">
         <h3>说明</h3>
         <ul class="note-list">
           <li>画面与手势类别由板子上常驻的 <code>robot_agent</code>（MediaPipe）产出，经后端 <code>GET /api/v1/gesture/*</code> 透传。</li>
           <li>只有在「手势识别」视图且开启自动刷新时才会轮询，切换到其他视图会立即停止，避免持续占用板子摄像头。</li>
           <li>状态为 <code>ERROR</code> 时多为摄像头被 <code>Face.ipynb</code> 等程序占用，请先释放摄像头再重新开启识别。</li>
+          <li>「手势控制」会把手势直接映射为机械臂动作，动作执行期间再比手势会被跳过，避免抖动重复触发。</li>
         </ul>
       </div>
     </section>
