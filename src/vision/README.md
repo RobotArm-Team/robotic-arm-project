@@ -71,7 +71,7 @@ python3 vision/capture_blocks.py \
      --preview
    ```
 
-检测器只在终端输出符合 `DetectionResult` 的 JSON，不会创建 `PickTask` 或控制机械臂。后端若需要接收结果，须先由团队在 OpenAPI 中确定接收接口，再显式增加 `--callback-url`；不能把未约定的 URL 当成正式接口。
+检测器会同时保留不同类别的框：在“一蓝一红一绿一黄”的课程场景中，可在同一个稳定窗口分别输出 4 条 `DetectionResult`。同一类别高度重叠的重复框会按 IoU 去重；当前版本每类确认一个方块，如需同时处理两个同色方块，需在后续版本加入目标跟踪 ID。检测器不会创建 `PickTask` 或控制机械臂。后端若需要接收结果，须先由团队在 OpenAPI 中确定接收接口，再显式增加 `--callback-url`；不能把未约定的 URL 当成正式接口。
 
 ## 数据要求
 
