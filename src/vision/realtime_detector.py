@@ -124,6 +124,9 @@ def main() -> int:
         absence_frames=args.absence_frames,
     )
     processed = 0
+    last_payload: Optional[Dict[str, Any]] = None
+    last_class: Optional[str] = None
+    last_post_at = 0.0
     print("Detector started. It only emits stable DetectionResult JSON; it never commands the arm.")
     try:
         while args.max_frames <= 0 or processed < args.max_frames:
@@ -138,14 +141,30 @@ def main() -> int:
                 continue
             elapsed_ms = (time.perf_counter() - started) * 1000.0
             confirmed = gate.update(candidate)
+            now = time.monotonic()
             if confirmed is not None:
                 payload = detection_result(confirmed, frame.shape[:2], elapsed_ms)
+                last_payload, last_class, last_post_at = payload, confirmed.class_id, now
                 print(json.dumps(payload, ensure_ascii=False), flush=True)
                 if args.callback_url:
                     try:
                         post_json(args.callback_url, payload, args.timeout_s)
                     except (RuntimeError, URLError, TimeoutError) as exc:
                         print(json.dumps({"callback_error": str(exc), "payload": payload}, ensure_ascii=False), flush=True)
+            elif (
+                last_payload is not None
+                and candidate is not None
+                and candidate.class_id == last_class
+                and candidate.confidence >= args.min_confidence
+                and now - last_post_at >= 1.0
+            ):
+                # 物体仍在同一位置：每秒补发一次心跳，避免后端 3 秒过期误判"目标已离开"。
+                last_post_at = now
+                if args.callback_url:
+                    try:
+                        post_json(args.callback_url, last_payload, args.timeout_s)
+                    except (RuntimeError, URLError, TimeoutError) as exc:
+                        print(json.dumps({"callback_error": str(exc), "payload": last_payload}, ensure_ascii=False), flush=True)
             if args.preview:
                 cv2.imshow("Block detection (Q to quit)", draw_preview(frame, candidate))
                 if cv2.waitKey(1) & 0xFF in (ord("q"), ord("Q")):
