@@ -182,3 +182,59 @@ def test_vosk_extract_empty_and_malformed():
     assert be._extract('{"text":"","result":[]}') == ("", 0.0)
     assert be._extract("{}") == ("", 0.0)
     assert be._extract("not-json") == ("", 0.0)
+
+
+def test_pick_input_prefers_usb_audio_module():
+    # 机械臂上有 DK 板载 MIC(index0) 与 USB 声卡(index2)，应优先选 USB 声卡
+    devices = [
+        {"index": 0, "name": "Hw HiAiUser built-in MIC", "channels": 1, "sample_rate": 16000},
+        {"index": 2, "name": "USB TO AUDIO waveshare", "channels": 2, "sample_rate": 48000},
+    ]
+    assert VoskBackend.pick_input_index(devices, default_index=0, prefer_usb=True) == 2
+
+
+def test_pick_input_respects_no_usb_and_default():
+    devices = [
+        {"index": 0, "name": "built-in MIC", "channels": 1, "sample_rate": 16000},
+        {"index": 1, "name": "mic array", "channels": 4, "sample_rate": 16000},
+    ]
+    # 无可识别的 USB 设备名时用默认设备（此处默认=1，注意 1 名字含 mic 也算 usb_keys）
+    got = VoskBackend.pick_input_index(devices, default_index=0, prefer_usb=True)
+    assert got in (0, 1)
+    # 关闭 prefer_usb 时必须用默认
+    assert VoskBackend.pick_input_index(devices, default_index=0, prefer_usb=False) == 0
+
+
+def test_pick_input_empty_devices():
+    assert VoskBackend.pick_input_index([], default_index=0, prefer_usb=True) == -1
+
+
+def test_list_input_devices_filters_output_only():
+    class FakePA:
+        def get_device_count(self):
+            return 3
+        def get_device_info_by_index(self, i):
+            return [
+                {"name": "out only", "maxInputChannels": 0, "defaultSampleRate": 48000},
+                {"name": "usb mic", "maxInputChannels": 2, "defaultSampleRate": 16000},
+                {"name": "builtin mic", "maxInputChannels": 1, "defaultSampleRate": 16000},
+            ][i]
+    devs = VoskBackend.list_input_devices(FakePA())
+    assert [d["index"] for d in devs] == [1, 2]
+    assert devs[0]["channels"] == 2
+
+
+def test_calibrate_vad_median_and_absolute_floor():
+    # 绝对下限生效：极低噪声底也不会把门限设得过低
+    assert VoskBackend.calibrate_vad_threshold([1.0, 2.0], 2.0) == 200.0
+    # 中位数抗离群：高噪声底时一次碰麦(5000)不应把门限抬高一大截
+    samples = [1000.0, 1100.0, 1050.0, 5000.0, 1080.0]
+    th = VoskBackend.calibrate_vad_threshold(samples, sensitivity=2.0)
+    assert 2000.0 <= th <= 2300.0, th  # 中位数约1050 × 2，而非被5000拉高
+
+
+def test_calibrate_vad_grammar_allows_lower_threshold():
+    samples = [100.0, 110.0, 120.0]
+    strict = VoskBackend.calibrate_vad_threshold(samples, 2.0, has_grammar=False)
+    loose = VoskBackend.calibrate_vad_threshold(samples, 2.0, has_grammar=True)
+    assert strict > loose  # 自由解码门限更保守
