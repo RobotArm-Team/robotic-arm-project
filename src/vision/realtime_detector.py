@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Run local YOLO inference on the latest frame from the 200DK.
 
-The detector emits a standard ``DetectionResult`` JSON only after a class is
-stable across consecutive frames.  It never opens Arm_Lib or posts a PickTask.
-An optional callback is for a backend endpoint agreed by the team; it is not
-enabled by default.
+The detector publishes every visible box so the web UI can draw all objects in
+the camera view, and keeps a primary detection for the manual \"分拣该物体\"
+button.  It never opens Arm_Lib or posts a PickTask.
 """
 
 from __future__ import annotations
@@ -23,9 +22,9 @@ import numpy as np
 from ultralytics import YOLO
 
 try:
-    from vision.detection_gate import DetectionCandidate, DetectionGate
+    from vision.detection_gate import DetectionCandidate
 except ImportError:  # Supports direct execution from src/vision.
-    from detection_gate import DetectionCandidate, DetectionGate
+    from detection_gate import DetectionCandidate
 
 
 def fetch_frame(url: str, timeout_s: float) -> np.ndarray:
@@ -37,20 +36,29 @@ def fetch_frame(url: str, timeout_s: float) -> np.ndarray:
     return frame
 
 
-def top_candidate(result: Any) -> Optional[DetectionCandidate]:
+def all_candidates(result: Any, min_confidence: float) -> list[DetectionCandidate]:
+    """返回当前帧中所有超过置信度阈值的检测框，供前端逐个展示。"""
     if result.boxes is None or len(result.boxes) == 0:
-        return None
-    best_index = int(result.boxes.conf.argmax().item())
-    bbox = result.boxes.xyxy[best_index].cpu().tolist()
-    class_index = int(result.boxes.cls[best_index].item())
-    return DetectionCandidate(
-        class_id=str(result.names[class_index]),
-        confidence=float(result.boxes.conf[best_index].item()),
-        bbox_xyxy=tuple(float(value) for value in bbox),
-    )
+        return []
+    candidates: list[DetectionCandidate] = []
+    names = result.names
+    for index in range(len(result.boxes)):
+        confidence = float(result.boxes.conf[index].item())
+        if confidence < min_confidence:
+            continue
+        bbox = result.boxes.xyxy[index].cpu().tolist()
+        class_index = int(result.boxes.cls[index].item())
+        candidates.append(
+            DetectionCandidate(
+                class_id=str(names[class_index]),
+                confidence=confidence,
+                bbox_xyxy=tuple(float(value) for value in bbox),
+            )
+        )
+    return candidates
 
 
-def detection_result(candidate: DetectionCandidate, frame_shape: Tuple[int, int], elapsed_ms: float) -> Dict[str, Any]:
+def detection_item(candidate: DetectionCandidate, frame_shape: Tuple[int, int]) -> Dict[str, Any]:
     height, width = frame_shape
     left, top, right, bottom = candidate.bbox_xyxy
     left = max(0, min(int(round(left)), width - 1))
@@ -58,15 +66,46 @@ def detection_result(candidate: DetectionCandidate, frame_shape: Tuple[int, int]
     right = max(left + 1, min(int(round(right)), width))
     bottom = max(top + 1, min(int(round(bottom)), height))
     box_width, box_height = right - left, bottom - top
-    captured_at = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     return {
-        "frame_id": "vision-" + captured_at,
         "class_id": candidate.class_id,
         "confidence": round(candidate.confidence, 4),
         "bbox_px": [left, top, box_width, box_height],
         "center_px": [left + box_width // 2, top + box_height // 2],
-        "inference_ms": round(elapsed_ms, 2),
     }
+
+
+def detection_payload(
+    candidates: list[DetectionCandidate],
+    frame_shape: Tuple[int, int],
+    elapsed_ms: float,
+    fallback_class: str = "other",
+) -> Dict[str, Any]:
+    """组装一帧的检测结果：检测列表 + 供现有分拣按钮使用的首选目标。"""
+    captured_at = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    items = [detection_item(candidate, frame_shape) for candidate in candidates]
+    payload: Dict[str, Any] = {
+        "frame_id": "vision-" + captured_at,
+        "inference_ms": round(elapsed_ms, 2),
+        "count": len(items),
+        "detections": items,
+    }
+    if candidates:
+        # 分拣按钮对应的首选目标取「离画面中心最近」的框：机械臂在桌面中央抓取，
+        # 这样多个物体同时出现时，类别的选择与实际抓取位置一致。
+        height, width = frame_shape
+        center_x, center_y = width / 2.0, height / 2.0
+        primary = min(
+            candidates,
+            key=lambda candidate: (
+                ((candidate.bbox_xyxy[0] + candidate.bbox_xyxy[2]) / 2.0 - center_x) ** 2
+                + ((candidate.bbox_xyxy[1] + candidate.bbox_xyxy[3]) / 2.0 - center_y) ** 2
+            ),
+        )
+        payload.update(detection_item(primary, frame_shape))
+    else:
+        # 顶层 class_id 只为兼容后端现有校验；前端以 detections 列表为准。
+        payload["class_id"] = fallback_class
+    return payload
 
 
 def post_json(url: str, payload: Dict[str, Any], timeout_s: float) -> None:
@@ -77,9 +116,9 @@ def post_json(url: str, payload: Dict[str, Any], timeout_s: float) -> None:
             raise RuntimeError("callback returned HTTP %d" % response.status)
 
 
-def draw_preview(frame: np.ndarray, candidate: Optional[DetectionCandidate]) -> np.ndarray:
+def draw_preview(frame: np.ndarray, candidates: list[DetectionCandidate]) -> np.ndarray:
     preview = frame.copy()
-    if candidate is not None:
+    for candidate in candidates:
         left, top, right, bottom = (int(round(value)) for value in candidate.bbox_xyxy)
         cv2.rectangle(preview, (left, top), (right, bottom), (0, 255, 0), 2)
         cv2.putText(
@@ -100,9 +139,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--frame-url", required=True, help="200DK GET /frame URL")
     parser.add_argument("--callback-url", help="optional team-agreed backend URL for DetectionResult JSON")
     parser.add_argument("--min-confidence", type=float, default=0.50)
-    parser.add_argument("--confirm-frames", type=int, default=5)
-    parser.add_argument("--confirm-min", type=int, default=4)
-    parser.add_argument("--absence-frames", type=int, default=3)
     parser.add_argument("--poll-interval-ms", type=int, default=100)
     parser.add_argument("--timeout-s", type=float, default=3.0)
     parser.add_argument("--preview", action="store_true", help="show annotated local preview; press Q to exit")
@@ -117,56 +153,32 @@ def main() -> int:
     if not args.model.is_file():
         raise SystemExit("model weight does not exist: %s" % args.model)
     model = YOLO(str(args.model))
-    gate = DetectionGate(
-        confirm_frames=args.confirm_frames,
-        confirm_min=args.confirm_min,
-        min_confidence=args.min_confidence,
-        absence_frames=args.absence_frames,
-    )
     processed = 0
-    last_payload: Optional[Dict[str, Any]] = None
     last_class: Optional[str] = None
-    last_post_at = 0.0
-    print("Detector started. It only emits stable DetectionResult JSON; it never commands the arm.")
+    print("Detector started. It posts all visible detections; it never commands the arm.")
     try:
         while args.max_frames <= 0 or processed < args.max_frames:
             started = time.perf_counter()
             try:
                 frame = fetch_frame(args.frame_url, args.timeout_s)
                 result = model.predict(source=frame, imgsz=640, conf=args.min_confidence, verbose=False)[0]
-                candidate = top_candidate(result)
+                candidates = all_candidates(result, args.min_confidence)
             except (RuntimeError, URLError, TimeoutError, cv2.error) as exc:
                 print(json.dumps({"vision_error": str(exc)}, ensure_ascii=False), flush=True)
                 time.sleep(args.poll_interval_ms / 1000.0)
                 continue
             elapsed_ms = (time.perf_counter() - started) * 1000.0
-            confirmed = gate.update(candidate)
-            now = time.monotonic()
-            if confirmed is not None:
-                payload = detection_result(confirmed, frame.shape[:2], elapsed_ms)
-                last_payload, last_class, last_post_at = payload, confirmed.class_id, now
+            payload = detection_payload(candidates, frame.shape[:2], elapsed_ms, last_class or "other")
+            if candidates:
+                last_class = payload["class_id"]
                 print(json.dumps(payload, ensure_ascii=False), flush=True)
-                if args.callback_url:
-                    try:
-                        post_json(args.callback_url, payload, args.timeout_s)
-                    except (RuntimeError, URLError, TimeoutError) as exc:
-                        print(json.dumps({"callback_error": str(exc), "payload": payload}, ensure_ascii=False), flush=True)
-            elif (
-                last_payload is not None
-                and candidate is not None
-                and candidate.class_id == last_class
-                and candidate.confidence >= args.min_confidence
-                and now - last_post_at >= 1.0
-            ):
-                # 物体仍在同一位置：每秒补发一次心跳，避免后端 3 秒过期误判"目标已离开"。
-                last_post_at = now
-                if args.callback_url:
-                    try:
-                        post_json(args.callback_url, last_payload, args.timeout_s)
-                    except (RuntimeError, URLError, TimeoutError) as exc:
-                        print(json.dumps({"callback_error": str(exc), "payload": last_payload}, ensure_ascii=False), flush=True)
+            if args.callback_url:
+                try:
+                    post_json(args.callback_url, payload, args.timeout_s)
+                except (RuntimeError, URLError, TimeoutError) as exc:
+                    print(json.dumps({"callback_error": str(exc), "payload": payload}, ensure_ascii=False), flush=True)
             if args.preview:
-                cv2.imshow("Block detection (Q to quit)", draw_preview(frame, candidate))
+                cv2.imshow("Block detection (Q to quit)", draw_preview(frame, candidates))
                 if cv2.waitKey(1) & 0xFF in (ord("q"), ord("Q")):
                     break
             processed += 1
