@@ -68,11 +68,11 @@ def main() -> int:
         print("可手动从 https://alphacephei.com/vosk/models 下载后解压到：", args.out, file=sys.stderr)
         return 1
     finally:
-    if os.path.exists(zip_path):
-        try:
-            os.remove(zip_path)
-        except OSError:
-            print(f"[warn] 临时压缩包未删除，可手动删除：{zip_path}", file=sys.stderr)
+        if os.path.exists(zip_path):
+            try:
+                os.remove(zip_path)
+            except OSError:
+                print(f"[warn] 临时压缩包未删除，可手动删除：{zip_path}", file=sys.stderr)
     print(f"[done] Vosk 模型就绪：{args.out}")
     return 0
 

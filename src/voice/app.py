@@ -17,7 +17,11 @@ import argparse
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Optional
+
+# 网页「按住说话」通过该文件控制是否采纳识别结果：存在时只收音不上屏/不下发。
+MUTE_FLAG = Path(os.environ.get("VOICE_MUTE_FLAG", "/tmp/voice_muted"))
 
 # 兼容三种运行方式（PyCharm 右键 Run 走第 2 种）：
 #   1) 作为模块：python -m voice.app
@@ -34,6 +38,7 @@ if __package__ in (None, ""):
         MicBackend,
         MockTextBackend,
         RecognizerBackend,
+        SherpaBackend,
         VoskBackend,
         VoiceRecognizer,
         DEFAULT_GRAMMAR,
@@ -45,6 +50,7 @@ else:
         MicBackend,
         MockTextBackend,
         RecognizerBackend,
+        SherpaBackend,
         VoskBackend,
         VoiceRecognizer,
         DEFAULT_GRAMMAR,
@@ -71,6 +77,25 @@ def _read_text_file(path: str):
 def _build_mic_backend(args) -> Optional[RecognizerBackend]:
     """按 --asr 选择麦克风后端：默认优先 Vosk 离线；失败按策略回退或报错。"""
     want = args.asr
+    # 0) Sherpa Paraformer：自由识别更准，推荐用于“说什么都能显示”的场景
+    if want == "sherpa":
+        if args.grammar:
+            print("[E2] 提示：--grammar 仅对 Vosk 生效，Sherpa 始终自由解码",
+                  file=sys.stderr)
+        try:
+            be = SherpaBackend(
+                model_path=args.sherpa_model,
+                tokens_path=args.sherpa_tokens,
+                min_confidence=args.min_confidence,
+                sample_rate=args.sample_rate,
+                mic_index=args.mic_index,
+                vad_sensitivity=args.vad_sensitivity,
+            )
+            be.validate()
+            return be
+        except (ImportError, FileNotFoundError) as e:
+            print(f"[E2] Sherpa 不可用：{e}", file=sys.stderr)
+            return None
     # 1) 尝试 Vosk（离线、国内可用）
     if want in ("vosk", "auto"):
         try:
@@ -110,10 +135,15 @@ def main() -> int:
     src.add_argument("--text-file", type=str, default=None,
                      help="从文本文件逐行读取（格式：文本|置信度，置信度可选）")
     src.add_argument("--interactive", action="store_true", help="从标准输入逐行读取")
-    ap.add_argument("--asr", choices=["vosk", "google", "auto"], default="vosk",
-                    help="ASR 引擎：vosk=离线中文(默认,适合国内)；google=Google Web Speech(需外网)；auto=优先 vosk")
+    ap.add_argument("--asr", choices=["vosk", "sherpa", "google", "auto"], default="vosk",
+                    help="ASR 引擎：vosk=离线中文(默认)；sherpa=Paraformer 自由识别(更准，推荐)；"
+                         "google=Google Web Speech(需外网)；auto=优先 vosk")
     ap.add_argument("--vosk-model", type=str, default=None,
                     help="Vosk 中文模型目录路径（默认 src/voice/models/vosk-cn）")
+    ap.add_argument("--sherpa-model", type=str, default=None,
+                    help="Paraformer 模型路径（默认 src/voice/models/paraformer-small/model.int8.onnx）")
+    ap.add_argument("--sherpa-tokens", type=str, default=None,
+                    help="Paraformer tokens.txt 路径（默认 src/voice/models/paraformer-small/tokens.txt）")
     ap.add_argument("--grammar", action="store_true",
                     help="启用 grammar 受限严格模式（把解码锁死到已知命令短语，用于嘈杂展台）；"
                          "默认关闭=自由解码，能识别任意话语、仅命令关键词触发")
@@ -168,15 +198,24 @@ def main() -> int:
             "（其它话语只显示不触发；Ctrl+C 退出）", file=sys.stderr,
         )
     elif args.wav_file:
-        # 离线 WAV 识别走 Vosk（本路径不依赖麦克风/外网，适合回归与指标统计）
+        # 离线 WAV 识别：默认走 Vosk；--asr sherpa 时走 Paraformer 自由解码
         try:
-            backend = VoskBackend(
-                model_path=args.vosk_model,
-                min_confidence=args.min_confidence,
-                sample_rate=args.sample_rate,
-                wav_path=args.wav_file,
-                grammar=DEFAULT_GRAMMAR if args.grammar else None,
-            )
+            if args.asr == "sherpa":
+                backend = SherpaBackend(
+                    model_path=args.sherpa_model,
+                    tokens_path=args.sherpa_tokens,
+                    min_confidence=args.min_confidence,
+                    sample_rate=args.sample_rate,
+                    wav_path=args.wav_file,
+                )
+            else:
+                backend = VoskBackend(
+                    model_path=args.vosk_model,
+                    min_confidence=args.min_confidence,
+                    sample_rate=args.sample_rate,
+                    wav_path=args.wav_file,
+                    grammar=DEFAULT_GRAMMAR if args.grammar else None,
+                )
             backend.validate()
         except (ImportError, FileNotFoundError) as e:
             print(f"[E2] {e}", file=sys.stderr)
@@ -203,6 +242,8 @@ def main() -> int:
     # 其它模式：仅 --debug 时打印。
     if args.mic:
         def _on_utt(utt: "VoiceCommand") -> None:
+            if MUTE_FLAG.exists():
+                return
             hit = VoiceRecognizer.match_command(utt.text) is not None
             print(
                 f"[识别] {utt.text!r} 置信={utt.confidence} "
@@ -218,6 +259,8 @@ def main() -> int:
     print("[E2] 语音控制启动，输出 VoiceCommand（Ctrl+C 退出）", file=sys.stderr)
     try:
         for cmd in recognizer.iter_commands(on_utterance=_on_utt):
+            if MUTE_FLAG.exists():
+                continue
             if args.debug:
                 print(
                     f"[dbg] text={cmd.text!r} conf={cmd.confidence} code={cmd.voice_code}",

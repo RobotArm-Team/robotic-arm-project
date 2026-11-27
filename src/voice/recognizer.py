@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
 import struct
@@ -296,12 +297,20 @@ class VoskBackend(RecognizerBackend):
         usb_keys = ("usb", "waveshare", "声卡", "音频", "usbaudio", "usb to audio")
         # 明显是虚拟/远程音频的设备跳过（Cast/ToDesk/虚拟/Steam 等），它们录不到真实麦克风
         virtual_keys = ("cast audio", "todesk", "virtual", "虚拟", "steam", "映射器")
+        # 真机实测：USB 摄像头自带的 Audio 输入是静音/装饰设备，真正能收音的是
+        # USB PnP 声卡；名字里含 camera 的设备排到最后，仅当没有其它 USB 音频时兜底。
+        camera_keys = ("camera", "摄像头", "webcam")
         if prefer_usb:
-            for d in devices:
+            usable = [d for d in devices
+                      if not any(v in d["name"].lower() for v in virtual_keys)]
+            for d in usable:
                 low = d["name"].lower()
-                if any(v in low for v in virtual_keys):
+                if any(c in low for c in camera_keys):
                     continue
                 if any(k in low for k in usb_keys):
+                    return d["index"]
+            for d in usable:
+                if any(k in d["name"].lower() for k in usb_keys):
                     return d["index"]
         if default_index is not None and any(d["index"] == default_index for d in devices):
             return default_index
@@ -451,7 +460,9 @@ class VoskBackend(RecognizerBackend):
             mid = len(ordered) // 2
             base = ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2.0
         mult = max(1.0, sensitivity) * (0.7 if has_grammar else 1.0)
-        return max(base * mult, 200.0)
+        # 上限 2500：现场风扇/舵机噪声可能把中位数抬得很高（实测门限一度到
+        # 4268，导致正常说话被 VAD 切碎）；封顶保证语音仍能进入识别。
+        return max(min(base * mult, 2500.0), 200.0)
 
     def _iter_mic(self) -> Iterator[Utterance]:
         """从麦克风流式识别。
@@ -477,7 +488,7 @@ class VoskBackend(RecognizerBackend):
                     "设备采样率非 16k，重采样需要 audioop（Python ≤3.12 自带）；"
                     "请换支持 16k 的 USB 声卡，或用 Python 3.11。"
                 ) from e
-            print(f"[E2] 设备采样 {actual_rate}Hz，重采样到 {self.sample_rate}Hz（Vosk 要求）",
+            print(f"[E2] 设备采样 {actual_rate}Hz，重采样到 {self.sample_rate}Hz（ASR 要求）",
                   file=sys.stderr)
 
         # 校准环境噪声底：采 ~0.7s，用中位数估计，避免单次碰麦抬高门限。
@@ -492,6 +503,9 @@ class VoskBackend(RecognizerBackend):
               f"（灵敏度={self.vad_sensitivity}{'，grammar模式' if self.grammar else ''}）",
               file=sys.stderr)
         silence_limit = max(1, int(0.5 * actual_rate / 4000))  # 0.5s 静音判定句尾
+        # 过滤按键声/短噪声：至少持续约 0.35s，且峰值明显高于门限。
+        min_voiced_blocks = max(2, int(round(0.35 * actual_rate / 4000)))
+        min_peak_rms = max(threshold * 1.15, 700.0)
 
         def _to_vosk(data: bytes) -> bytes:
             if not need_resample:
@@ -501,20 +515,39 @@ class VoskBackend(RecognizerBackend):
         def _vad_chunks() -> Iterator[Optional[bytes]]:
             speaking = False
             silent = 0
+            voiced = 0
+            peak = 0.0
+            segment: list[bytes] = []
             while True:
                 data = stream.read(4000, exception_on_overflow=False)
-                if self._frame_rms(data) >= threshold:
-                    speaking = True
+                rms = self._frame_rms(data)
+                if rms >= threshold:
+                    if not speaking:
+                        speaking = True
+                        silent = 0
+                        voiced = 0
+                        peak = 0.0
+                        segment = []
                     silent = 0
-                    yield _to_vosk(data)
+                    voiced += 1
+                    peak = max(peak, rms)
+                    segment.append(_to_vosk(data))
                 elif speaking:
-                    # 句尾拖尾静音也喂给 Vosk 帮助断句，积累到间隙则切句
+                    # 句尾静音先收进缓冲区；整段确认有效后再一次性送入识别器。
                     silent += 1
-                    yield _to_vosk(data)
+                    segment.append(_to_vosk(data))
                     if silent >= silence_limit:
-                        yield None  # 触发切句
+                        if voiced >= min_voiced_blocks and peak >= min_peak_rms:
+                            for chunk in segment:
+                                yield chunk
+                            yield None  # 触发切句
+                        # 否则整段丢弃，不喂给识别器，避免短噪声被“脑补”成文字。
                         speaking = False
-                # 否则纯静音：不喂给 Vosk
+                        silent = 0
+                        voiced = 0
+                        peak = 0.0
+                        segment = []
+                # 纯静音：不收集
 
         try:
             yield from self._iter_stream(_vad_chunks())
@@ -535,6 +568,113 @@ class VoskBackend(RecognizerBackend):
         yield from self._iter_mic()
 
 
+class SherpaBackend(VoskBackend):
+    """基于 sherpa-onnx Paraformer 的离线中文自由识别后端。
+
+    复用 VoskBackend 的麦克风选择、重采样与能量 VAD；只把流式解码换成
+    Paraformer 的整段离线解码。默认自由识别任意话语，是否下发仍由
+    VoiceRecognizer 的关键词匹配决定；不进入 grammar 受限模式。
+
+    依赖（已随 wheels_asr 部署）：
+      sherpa-onnx / sherpa-onnx-core / onnxruntime / PyAudio
+    模型默认放在 models/paraformer-small/（model.int8.onnx + tokens.txt）。
+    """
+
+    DEFAULT_MODEL_PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "models", "paraformer-small", "model.int8.onnx",
+    )
+    DEFAULT_TOKENS_PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "models", "paraformer-small", "tokens.txt",
+    )
+
+    def __init__(
+        self,
+        model_path: Optional[str] = None,
+        tokens_path: Optional[str] = None,
+        **kwargs,
+    ) -> None:
+        # Paraformer 不支持 Vosk 的 grammar；忽略该参数，始终保持自由解码。
+        kwargs.pop("grammar", None)
+        super().__init__(model_path=None, **kwargs)
+        self.model_path = model_path or self.DEFAULT_MODEL_PATH
+        self.tokens_path = tokens_path or self.DEFAULT_TOKENS_PATH
+        self._recognizer = None
+        self._sherpa_onnx = None
+
+    def _load(self) -> None:
+        try:
+            import pyaudio
+            import sherpa_onnx
+        except ImportError as e:
+            raise ImportError(
+                "SherpaBackend 需要 sherpa-onnx 与 PyAudio："
+                "请先安装 wheels_asr 中的 wheel。"
+            ) from e
+        if not os.path.isfile(self.model_path):
+            raise FileNotFoundError(f"未找到 Paraformer 模型：{self.model_path}")
+        if not os.path.isfile(self.tokens_path):
+            raise FileNotFoundError(f"未找到 Paraformer tokens：{self.tokens_path}")
+        self._pyaudio = pyaudio
+        self._sherpa_onnx = sherpa_onnx
+        if self._recognizer is None:
+            # num_threads=2：机械臂 4 核，留出余量给视觉/控制进程。
+            self._recognizer = sherpa_onnx.OfflineRecognizer.from_paraformer(
+                paraformer=self.model_path,
+                tokens=self.tokens_path,
+                num_threads=2,
+                sample_rate=self.sample_rate,
+                feature_dim=80,
+                decoding_method="greedy_search",
+            )
+
+    def _decode_segment(self, pcm: bytes) -> Optional[Utterance]:
+        import numpy as np
+
+        samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        if samples.size == 0:
+            return None
+        stream = self._recognizer.create_stream()
+        stream.accept_waveform(self.sample_rate, samples)
+        self._recognizer.decode_stream(stream)
+        text = (stream.result.text or "").strip()
+        if not text:
+            return None
+        # Paraformer 不返回逐词置信度；自由识别结果统一按 1.0 处理，
+        # 是否下发只由关键词匹配决定（无关话语仍不会触发）。
+        return Utterance(text=text, confidence=1.0)
+
+    def _iter_stream(self, data_iter: Iterable[bytes]) -> Iterator[Utterance]:
+        """累积 VAD 切出的一段 16k/16bit PCM，整段交给 Paraformer 解码。"""
+        max_bytes = max(1, int(self.phrase_time_limit * self.sample_rate * 2))
+        buf = bytearray()
+
+        def flush() -> Optional[Utterance]:
+            if not buf:
+                return None
+            pcm = bytes(buf)
+            buf.clear()
+            return self._decode_segment(pcm)
+
+        for data in data_iter:
+            if data is None:  # VAD 静音切句哨兵
+                utt = flush()
+                if utt is not None:
+                    yield utt
+                continue
+            if not data:
+                continue
+            buf.extend(data)
+            if len(buf) >= max_bytes:  # 超长强制切段，保证周期性出结果
+                utt = flush()
+                if utt is not None:
+                    yield utt
+        utt = flush()
+        if utt is not None:
+            yield utt
+
+
 class VoiceRecognizer:
     """关键词匹配 + 命令封装。
 
@@ -547,11 +687,30 @@ class VoiceRecognizer:
 
     @staticmethod
     def match_command(text: str) -> Optional[str]:
-        """返回命中的命令名；未命中返回 None。纯函数，便于单元测试。"""
+        """返回命中的命令名；未命中返回 None。纯函数，便于单元测试。
+
+        先做精确包含匹配；再对 4 字及以上的长命令词做等长模糊兜底，
+        容忍现场麦克风高频衰减导致的 1 字误差（如“帮我分类”被识别成
+        “帮我分配/帮我分离”）。短命令词仍只做精确匹配，避免误触发。
+        """
         norm = _normalize(text)
         for kw, cmd in COMMAND_KEYWORDS.items():
             if _normalize(kw) in norm:
                 return cmd
+
+        best_cmd, best_ratio = None, 0.0
+        for kw, cmd in COMMAND_KEYWORDS.items():
+            k = _normalize(kw)
+            if len(k) < 4 or len(norm) < len(k):
+                continue
+            for i in range(len(norm) - len(k) + 1):
+                ratio = difflib.SequenceMatcher(
+                    None, k, norm[i:i + len(k)]
+                ).ratio()
+                if ratio > best_ratio:
+                    best_ratio, best_cmd = ratio, cmd
+        if best_ratio >= 0.72:
+            return best_cmd
         return None
 
     def iter_commands(self, on_utterance=None) -> Iterator[VoiceCommand]:
