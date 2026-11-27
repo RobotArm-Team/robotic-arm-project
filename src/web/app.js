@@ -7,6 +7,8 @@ const POLL_INTERVAL = 2000;
 const MAX_EVENTS = 100;
 const GESTURE_POLL_INTERVAL = 800;
 const GESTURE_FRAME_INTERVAL = 300;
+const VISION_POLL_INTERVAL = 1000;
+const VISION_FRAME_INTERVAL = 300;
 const MAX_GESTURE_HISTORY = 10;
 
 const VIEW_META = {
@@ -15,6 +17,7 @@ const VIEW_META = {
   statistics: { title: '分类统计', subtitle: '任务成功率与识别类别分布' },
   exceptions: { title: '异常日志', subtitle: '坐标越界、安全拦截与任务失败的可观测记录' },
   robot: { title: '机械臂控制', subtitle: '后端转发到板子 robot_agent，点击按钮即执行真实动作' },
+  vision: { title: '垃圾分拣', subtitle: '摄像头识别四类垃圾，确认后由机械臂抓取投放到对应料筐' },
   gesture: { title: '手势识别', subtitle: '板子摄像头实时识别，画面与手势类别经后端透传' },
   tasks: { title: '任务受理', subtitle: '提交分拣任务、查询结果与软件安全停止' },
 };
@@ -121,6 +124,20 @@ const state = {
     error: null,
     fps: null,
     gesture: null,
+    control: null,
+    controlPending: '',
+    message: '',
+    pending: '',
+    inFlight: false,
+    frameUrl: '',
+    frameLoading: false,
+    latestTimer: null,
+    frameTimer: null,
+  },
+  vision: {
+    camera: null,
+    latest: null,
+    stale: false,
     message: '',
     pending: '',
     inFlight: false,
@@ -233,7 +250,14 @@ const api = {
   gestureLatest: () => api.request('/gesture/latest'),
   gestureStart: () => api.request('/gesture/start', { method: 'POST' }),
   gestureStop: () => api.request('/gesture/stop', { method: 'POST' }),
+  gestureControlStart: () => api.request('/gesture/control/start', { method: 'POST' }),
+  gestureControlStop: () => api.request('/gesture/control/stop', { method: 'POST' }),
   gestureFrameUrl: () => `${API_BASE}/gesture/frame?t=${Date.now()}`,
+  visionStatus: () => api.request('/vision/status'),
+  visionCameraStart: () => api.request('/vision/camera/start', { method: 'POST' }),
+  visionCameraStop: () => api.request('/vision/camera/stop', { method: 'POST' }),
+  visionSort: classId => api.request('/vision/sort', { method: 'POST', body: { class_id: classId } }),
+  visionFrameUrl: () => `${API_BASE}/vision/frame?t=${Date.now()}`,
 };
 
 /* ------------------------------ 渲染 ------------------------------ */
@@ -804,6 +828,64 @@ function renderGesture() {
         </span>`).join('');
     }
   }
+
+  renderGestureControl(gestureState);
+}
+
+function renderGestureControl(gestureState) {
+  const control = gestureState.control || null;
+  const enabled = Boolean(control && control.enabled);
+
+  const controlToggle = $('#gestureControlToggle');
+  if (controlToggle) {
+    controlToggle.textContent = enabled ? '关闭手势控制' : '开启手势控制';
+    controlToggle.disabled = Boolean(gestureState.controlPending);
+    controlToggle.classList.toggle('primary', !enabled);
+    controlToggle.classList.toggle('danger', enabled);
+  }
+
+  const controlState = $('#gestureControlState');
+  if (controlState) {
+    controlState.textContent = enabled
+      ? `已开启 · 已触发 ${control.count || 0} 次`
+      : control ? '未开启' : '等待数据…';
+  }
+
+  const controlMsg = $('#gestureControlMsg');
+  if (controlMsg) {
+    if (gestureState.controlPending === 'start') {
+      setFormMessage(controlMsg, '正在开启手势控制…');
+    } else if (gestureState.controlPending === 'stop') {
+      setFormMessage(controlMsg, '正在关闭手势控制…');
+    } else if (!control) {
+      setFormMessage(controlMsg, '');
+    } else if (enabled) {
+      setFormMessage(controlMsg,
+        `识别到手势即执行，最小置信度 ${control.min_confidence ?? '—'}，同一手势冷却 ${control.cooldown_s ?? '—'} 秒`, 'ok');
+    } else {
+      setFormMessage(controlMsg, '开启后手势会直接驱动机械臂，请确认动作范围内无人。');
+    }
+  }
+
+  const mappingBox = $('#gestureMap');
+  if (mappingBox) {
+    const mapping = Array.isArray(control && control.mapping) ? control.mapping : [];
+    mappingBox.innerHTML = mapping.length
+      ? mapping.map(item => `
+        <span class="gesture-chip" title="${escapeHtml(item.action)}">
+          <b>${escapeHtml(item.gesture_label || item.gesture_id)}</b>
+          <span class="mono">${escapeHtml(item.action_label || item.action)}</span>
+        </span>`).join('')
+      : '<p class="empty">等待联动配置…</p>';
+  }
+
+  const lastBox = $('#gestureControlLast');
+  if (lastBox) {
+    const last = control && control.last;
+    lastBox.textContent = last
+      ? `最近触发：${last.gesture_label || last.gesture_id} → ${last.action_label || last.action}（置信度 ${gesturePercent(last.confidence)}，${formatClock(last.at)}）`
+      : '最近触发：—';
+  }
 }
 
 async function refreshGesture() {
@@ -819,6 +901,7 @@ async function refreshGesture() {
       const fps = Number(data.fps);
       gestureState.fps = data.fps === null || data.fps === undefined || !Number.isFinite(fps) ? null : fps;
       gestureState.gesture = data.gesture || null;
+      gestureState.control = data.control || null;
     }
   } catch (error) {
     gestureState.error = error.message || '手势状态获取失败';
@@ -895,6 +978,230 @@ function stopGesturePolling() {
   if (gestureState.frameTimer) {
     clearInterval(gestureState.frameTimer);
     gestureState.frameTimer = null;
+  }
+}
+
+/* ------------------------------ 垃圾分拣 ------------------------------ */
+function renderVision() {
+  const vision = state.vision;
+  const camera = vision.camera || {};
+  const running = Boolean(camera.running);
+  const ready = String(camera.camera || '').toUpperCase() === 'READY';
+
+  const badge = $('#visionStatusBadge');
+  if (badge) {
+    badge.className = `badge ${ready ? 'badge-gesture-running' : running ? 'badge-gesture-starting' : 'badge-gesture-stopped'}`;
+    badge.textContent = ready ? '摄像头已就绪' : running ? '启动中' : '未开启';
+  }
+
+  const hint = $('#visionHint');
+  if (hint) {
+    hint.textContent = camera.error
+      ? `摄像头异常：${camera.error}`
+      : running ? '等待 YOLO 识别结果回传…' : '点击「开启摄像头」启动板子画面';
+  }
+
+  const toggle = $('#visionToggle');
+  if (toggle) {
+    toggle.disabled = Boolean(vision.inFlight);
+    toggle.textContent = running ? '关闭摄像头' : '开启摄像头';
+  }
+
+  const latest = vision.latest || {};
+  const detection = latest.detection || null;
+  const classEl = $('#visionClass');
+  if (classEl) {
+    classEl.textContent = detection
+      ? classLabel(detection.class_id)
+      : latest.stale ? '目标已离开' : '无目标';
+  }
+  const rawEl = $('#visionRaw');
+  if (rawEl) rawEl.textContent = detection ? `class_id ${detection.class_id}` : 'class_id —';
+
+  const confidenceEl = $('#visionConfidence');
+  if (confidenceEl) {
+    confidenceEl.textContent = detection && typeof detection.confidence === 'number'
+      ? `${(detection.confidence * 100).toFixed(1)}%`
+      : '—';
+  }
+  const centerEl = $('#visionCenter');
+  if (centerEl) {
+    centerEl.textContent = detection && Array.isArray(detection.center_px)
+      ? `(${detection.center_px[0]}, ${detection.center_px[1]})`
+      : '—';
+  }
+  const inferenceEl = $('#visionInference');
+  if (inferenceEl) inferenceEl.textContent = formatDuration(detection && detection.inference_ms);
+
+  const ageEl = $('#visionAge');
+  if (ageEl) {
+    ageEl.textContent = typeof latest.age_ms === 'number'
+      ? `${(latest.age_ms / 1000).toFixed(1)} s 前更新`
+      : '暂无识别结果';
+  }
+
+  const sortBtn = $('#visionSortBtn');
+  if (sortBtn) {
+    sortBtn.disabled = !detection || Boolean(vision.pending);
+    sortBtn.textContent = vision.pending ? '下发中…' : '分拣该物体';
+  }
+  const sortHint = $('#visionSortHint');
+  if (sortHint) {
+    sortHint.textContent = detection
+      ? `将执行：抓取桌面中央物体并投放到「${classLabel(detection.class_id)}」料筐。`
+      : '等待识别结果；结果超过 3 秒未更新会自动失效。';
+  }
+}
+
+async function refreshVision() {
+  const vision = state.vision;
+  if (vision.inFlight) return;
+  vision.inFlight = true;
+  try {
+    const data = await api.visionStatus();
+    if (data) {
+      vision.camera = data.camera || null;
+      vision.latest = data.latest || null;
+      vision.stale = Boolean(data.latest && data.latest.stale);
+    }
+  } catch (error) {
+    vision.message = error.message || '视觉状态获取失败';
+  } finally {
+    vision.inFlight = false;
+  }
+  renderVision();
+}
+
+async function loadVisionFrame() {
+  const vision = state.vision;
+  if (vision.frameLoading) return;
+  vision.frameLoading = true;
+  try {
+    const response = await fetch(api.visionFrameUrl(), { cache: 'no-store' });
+    if (response.status === 204) return;
+    if (!response.ok) throw new Error(`画面获取失败（HTTP ${response.status}）`);
+    const blob = await response.blob();
+    if (!blob || !blob.size) return;
+    const url = URL.createObjectURL(blob);
+    const previous = vision.frameUrl;
+    vision.frameUrl = url;
+    const image = $('#visionPreview');
+    if (image) {
+      image.src = url;
+      image.hidden = false;
+    }
+    const placeholder = $('#visionPlaceholder');
+    if (placeholder) placeholder.hidden = true;
+    if (previous) URL.revokeObjectURL(previous);
+  } catch {
+    // 单帧失败不打断轮询
+  } finally {
+    vision.frameLoading = false;
+  }
+}
+
+function clearVisionFrame() {
+  const vision = state.vision;
+  if (vision.frameUrl) {
+    URL.revokeObjectURL(vision.frameUrl);
+    vision.frameUrl = '';
+  }
+  const image = $('#visionPreview');
+  if (image) {
+    image.removeAttribute('src');
+    image.hidden = true;
+  }
+  const placeholder = $('#visionPlaceholder');
+  if (placeholder) placeholder.hidden = false;
+}
+
+function startVisionPolling() {
+  stopVisionPolling();
+  if (state.view !== 'vision' || !state.autoRefresh) return;
+  refreshVision();
+  loadVisionFrame();
+  state.vision.latestTimer = setInterval(() => {
+    if (state.view !== 'vision' || !state.autoRefresh || document.hidden) return;
+    refreshVision();
+  }, VISION_POLL_INTERVAL);
+  state.vision.frameTimer = setInterval(() => {
+    if (state.view !== 'vision' || !state.autoRefresh || document.hidden) return;
+    loadVisionFrame();
+  }, VISION_FRAME_INTERVAL);
+}
+
+function stopVisionPolling() {
+  const vision = state.vision;
+  if (vision.latestTimer) {
+    clearInterval(vision.latestTimer);
+    vision.latestTimer = null;
+  }
+  if (vision.frameTimer) {
+    clearInterval(vision.frameTimer);
+    vision.frameTimer = null;
+  }
+}
+
+function bindVisionControls() {
+  const toggle = $('#visionToggle');
+  if (toggle) {
+    toggle.addEventListener('click', async () => {
+      const vision = state.vision;
+      if (vision.inFlight) return;
+      const running = Boolean(vision.camera && vision.camera.running);
+      vision.inFlight = true;
+      renderVision();
+      try {
+        if (running) {
+          await api.visionCameraStop();
+          clearVisionFrame();
+          toast('已关闭摄像头');
+        } else {
+          await api.visionCameraStart();
+          toast('机械臂已下探到观察姿态，请在本机启动 YOLO 识别');
+        }
+      } catch (error) {
+        toast(`操作失败：${error.message}`);
+      } finally {
+        vision.inFlight = false;
+        await refreshVision();
+      }
+    });
+  }
+
+  const sortBtn = $('#visionSortBtn');
+  if (sortBtn) {
+    sortBtn.addEventListener('click', async () => {
+      const vision = state.vision;
+      const detection = vision.latest && vision.latest.detection;
+      if (!detection || vision.pending) return;
+      vision.pending = detection.class_id;
+      renderVision();
+      try {
+        const result = await api.visionSort(detection.class_id);
+        toast(`已下发分拣：${result.class_label || classLabel(detection.class_id)}`);
+      } catch (error) {
+        toast(`分拣失败：${error.message}`);
+      } finally {
+        vision.pending = '';
+        renderVision();
+      }
+    });
+  }
+
+  const stopBtn = $('#visionStopBtn');
+  if (stopBtn) {
+    stopBtn.addEventListener('click', async () => {
+      stopBtn.disabled = true;
+      try {
+        await api.robotStop();
+        toast('停止指令已下发，机械臂将归位');
+      } catch (error) {
+        toast(`停止失败：${error.message}`);
+      } finally {
+        stopBtn.disabled = false;
+      }
+    });
   }
 }
 
@@ -983,6 +1290,12 @@ function switchView(view) {
   } else {
     stopGesturePolling();
   }
+  if (view === 'vision') {
+    renderVision();
+    startVisionPolling();
+  } else {
+    stopVisionPolling();
+  }
 }
 
 /* ------------------------------ 交互绑定 ------------------------------ */
@@ -1002,8 +1315,11 @@ function bindRefresh() {
     if (state.autoRefresh) {
       refresh(false);
       if (state.view === 'gesture') startGesturePolling();
+      if (state.view === 'vision') startVisionPolling();
     } else if (state.view === 'gesture') {
       stopGesturePolling();
+    } else if (state.view === 'vision') {
+      stopVisionPolling();
     }
   });
   document.addEventListener('visibilitychange', () => {
@@ -1263,6 +1579,50 @@ function bindGestureControls() {
       refreshGesture();
     }
   });
+
+  const controlToggle = $('#gestureControlToggle');
+  if (controlToggle) {
+    controlToggle.addEventListener('click', async () => {
+      const gestureState = state.gesture;
+      if (gestureState.controlPending) return;
+      const enabled = Boolean(gestureState.control && gestureState.control.enabled);
+      gestureState.controlPending = enabled ? 'stop' : 'start';
+      renderGesture();
+      try {
+        if (enabled) {
+          await api.gestureControlStop();
+          toast('手势控制已关闭', 'info');
+        } else {
+          await api.gestureControlStart();
+          toast('手势控制已开启，比出手势即可驱动机械臂', 'success');
+          if (state.view === 'gesture') startGesturePolling();
+        }
+      } catch (error) {
+        const detail = error.code ? `${error.code}：${error.message}` : error.message;
+        toast(detail || '手势控制操作失败', 'error');
+      } finally {
+        gestureState.controlPending = '';
+        renderGesture();
+        refreshGesture();
+      }
+    });
+  }
+
+  const stopAction = $('#gestureStopAction');
+  if (!stopAction) return;
+
+  stopAction.addEventListener('click', async () => {
+    stopAction.disabled = true;
+    try {
+      await api.robotStop();
+      toast('停止指令已下发，机械臂将归位', 'success');
+    } catch (error) {
+      const detail = error.code ? `${error.code}：${error.message}` : error.message;
+      toast(detail || '停止指令下发失败', 'error');
+    } finally {
+      stopAction.disabled = false;
+    }
+  });
 }
 
 function init() {
@@ -1276,8 +1636,10 @@ function init() {
   bindTaskQuery();
   bindRobotControls();
   bindGestureControls();
+  bindVisionControls();
   renderAll();
   renderGesture();
+  renderVision();
   refresh(true);
   startPolling();
 }

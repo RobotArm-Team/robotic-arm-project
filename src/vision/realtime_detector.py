@@ -178,6 +178,10 @@ def main() -> int:
         for class_id in class_names
     }
     processed = 0
+    # The backend considers a result older than three seconds stale. Keep a
+    # heartbeat for each class independently so one visible colour cannot
+    # hide another from the shared frontend.
+    last_emitted: Dict[str, Tuple[Dict[str, Any], float]] = {}
     print("Detector started. It only emits stable DetectionResult JSON; it never commands the arm.")
     try:
         while args.max_frames <= 0 or processed < args.max_frames:
@@ -198,12 +202,26 @@ def main() -> int:
             for candidate in candidates:
                 if candidate.class_id not in best_by_class:
                     best_by_class[candidate.class_id] = candidate
+            now = time.monotonic()
             for class_id, gate in gates.items():
-                confirmed = gate.update(best_by_class.get(class_id))
-                if confirmed is None:
-                    continue
-                payload = detection_result(confirmed, frame.shape[:2], elapsed_ms)
-                print(json.dumps(payload, ensure_ascii=False), flush=True)
+                candidate = best_by_class.get(class_id)
+                confirmed = gate.update(candidate)
+                if confirmed is not None:
+                    payload = detection_result(confirmed, frame.shape[:2], elapsed_ms)
+                    print(json.dumps(payload, ensure_ascii=False), flush=True)
+                else:
+                    previous = last_emitted.get(class_id)
+                    if (
+                        candidate is None
+                        or previous is None
+                        or candidate.confidence < args.min_confidence
+                        or now - previous[1] < 1.0
+                    ):
+                        continue
+                    # The same class remains visible: repost the last stable
+                    # result once a second to prevent the backend timing out.
+                    payload = previous[0]
+                last_emitted[class_id] = (payload, now)
                 if args.callback_url:
                     try:
                         post_json(args.callback_url, payload, args.timeout_s)

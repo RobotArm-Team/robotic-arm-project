@@ -103,6 +103,17 @@ public class RobotAgentClient {
         return send("POST", "/gesture/stop");
     }
 
+    // ---------- 手势联动机械臂动作 ----------
+
+    /** 开启联动：识别到手势后由板子直接执行对应动作。 */
+    public Map<String, Object> gestureControlStart() {
+        return send("POST", "/gesture/control/start");
+    }
+
+    public Map<String, Object> gestureControlStop() {
+        return send("POST", "/gesture/control/stop");
+    }
+
     /** 最新一帧 JPEG；还没有画面时返回 null。 */
     public byte[] gestureFrame() {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/gesture/frame"))
@@ -130,6 +141,76 @@ public class RobotAgentClient {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE",
                     "机械臂代理请求被中断", null);
         }
+    }
+
+    // ---------- 视觉 / 垃圾分拣 ----------
+
+    public Map<String, Object> visionStatus() {
+        return send("GET", "/vision/status");
+    }
+
+    /** 开启摄像头帧服务；已在运行时返回已运行状态，不视为错误。 */
+    public Map<String, Object> visionStart() {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/vision/start"))
+                .timeout(requestTimeout)
+                .header("Accept", "application/json")
+                .method("POST", HttpRequest.BodyPublishers.noBody())
+                .build();
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 409) {
+                return Map.of("status", "ALREADY_RUNNING");
+            }
+            return parse(response, "/vision/start");
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (ConnectException | HttpTimeoutException exception) {
+            throw unavailable(exception);
+        } catch (IOException exception) {
+            throw unavailable(exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE",
+                    "机械臂代理请求被中断", null);
+        }
+    }
+
+    public Map<String, Object> visionStop() {
+        return send("POST", "/vision/stop");
+    }
+
+    /** 摄像头最新一帧 JPEG；还没有画面时返回 null。 */
+    public byte[] visionFrame() {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/vision/frame"))
+                .timeout(requestTimeout)
+                .method("GET", HttpRequest.BodyPublishers.noBody())
+                .build();
+        try {
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() == 200) {
+                return response.body();
+            }
+            if (response.statusCode() == 404) {
+                return null;
+            }
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "ROBOT_AGENT_ERROR",
+                    "机械臂代理返回状态 " + response.statusCode(), null);
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (ConnectException | HttpTimeoutException exception) {
+            throw unavailable(exception);
+        } catch (IOException exception) {
+            throw unavailable(exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE",
+                    "机械臂代理请求被中断", null);
+        }
+    }
+
+    /** 按类别执行一次抓取投放。 */
+    public Map<String, Object> sort(String classId) {
+        return send("POST", "/sort/" + classId);
     }
 
     private Map<String, Object> parse(HttpResponse<String> response, String path) throws IOException {

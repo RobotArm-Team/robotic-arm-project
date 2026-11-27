@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import struct
+import sys
 from dataclasses import dataclass
 from typing import Iterable, Iterator, List, Optional, Tuple
 
@@ -165,6 +166,9 @@ class VoskBackend(RecognizerBackend):
         phrase_time_limit: float = 4.0,
         wav_path: Optional[str] = None,
         grammar: Optional[List[str]] = None,
+        mic_index: Optional[int] = None,
+        vad_sensitivity: float = 2.0,
+        prefer_usb: bool = True,
     ) -> None:
         super().__init__(min_confidence)
         self.model_path = model_path or self.DEFAULT_MODEL_DIR
@@ -175,6 +179,13 @@ class VoskBackend(RecognizerBackend):
         # grammar 默认 None = 自由解码（能识别任意话语，仅命令关键词触发）；
         # 传 DEFAULT_GRAMMAR 则进入受限严格模式（--grammar，用于嘈杂展台）。
         self.grammar = grammar
+        # 麦克风选择：None=自动（优先 USB 声卡，见 _pick_input_device）；
+        # 显式 index 用 --mic-index 指定，避免默认设备选到 DK 板载 MIC。
+        self.mic_index = mic_index
+        # VAD 灵敏度倍数：自由解码下取更保守的值，避免底噪被幻觉成中文碎片。
+        # 门限 = max(噪声底 × vad_sensitivity, 绝对下限)，越大越不易误触发。
+        self.vad_sensitivity = vad_sensitivity
+        self.prefer_usb = prefer_usb
         self._Model = None
         self._KaldiRecognizer = None
         self._pyaudio = None
@@ -244,6 +255,98 @@ class VoskBackend(RecognizerBackend):
             return 0.0
         shorts = struct.unpack(f"<{count}h", data)
         return (sum(s * s for s in shorts) / count) ** 0.5
+
+    @staticmethod
+    def list_input_devices(p) -> List[dict]:
+        """列出所有可录音设备（供 --list-mics 与自动选择使用）。
+
+        每项：index / name / max_input_channels / default_sample_rate。
+        硬件依据（机械臂使用手册 §2.5）：系统里有两类麦克风源——
+        Atlas DK 板载 MIC 与 USB 转音频模块的板载麦，默认设备未必是后者。
+        """
+        devices = []
+        for i in range(p.get_device_count()):
+            try:
+                info = p.get_device_info_by_index(i)
+            except Exception:
+                continue
+            if int(info.get("maxInputChannels", 0)) > 0:
+                devices.append({
+                    "index": i,
+                    "name": info.get("name", ""),
+                    "channels": int(info.get("maxInputChannels", 0)),
+                    "sample_rate": int(info.get("defaultSampleRate", 0)),
+                })
+        return devices
+
+    @staticmethod
+    def pick_input_index(devices: List[dict], default_index: Optional[int] = None,
+                         prefer_usb: bool = True) -> int:
+        """选择录音设备索引（纯逻辑，可单测）。
+
+        规则：
+        - 显式指定（mic_index）由调用方直接用，不进本函数；
+        - prefer_usb=True 时优先选名字里含 usb / audio / waveshare / 声卡 的设备
+          （USB 转音频模块），避开 DK 板载 MIC；
+        - 否则用 PyAudio 报的默认输入设备；
+        - 都没有则退回第一个可录音设备；无设备返回 -1。
+        """
+        if not devices:
+            return -1
+        usb_keys = ("usb", "waveshare", "声卡", "音频", "usbaudio", "usb to audio")
+        # 明显是虚拟/远程音频的设备跳过（Cast/ToDesk/虚拟/Steam 等），它们录不到真实麦克风
+        virtual_keys = ("cast audio", "todesk", "virtual", "虚拟", "steam", "映射器")
+        if prefer_usb:
+            for d in devices:
+                low = d["name"].lower()
+                if any(v in low for v in virtual_keys):
+                    continue
+                if any(k in low for k in usb_keys):
+                    return d["index"]
+        if default_index is not None and any(d["index"] == default_index for d in devices):
+            return default_index
+        return devices[0]["index"]
+
+    def _open_input_stream(self, p):
+        """按设备实际能力打开输入流，返回 (stream, actual_rate)。
+
+        USB 转音频模块支持 8K/16K/48K 等多采样率、立体声编码（手册 §2.5）。
+        这里先尝试项目要求的 sample_rate（16k，Vosk 需要），若设备不支持则
+        回退到设备默认采样率并告知上层——上层据此对音频做重采样到 16k。
+        声道固定按单声道打开（Vosk 要求），设备若只给立体声由后续转换处理。
+        """
+        devices = self.list_input_devices(p)
+        try:
+            default_idx = p.get_default_input_device_info()["index"]
+        except Exception:
+            default_idx = None
+        idx = (self.mic_index if self.mic_index is not None
+               else self.pick_input_index(devices, default_idx, self.prefer_usb))
+        if idx < 0:
+            raise RuntimeError("未找到任何可录音设备；请检查 USB 转音频模块是否插好（手册 §2.5）")
+
+        chosen = next((d for d in devices if d["index"] == idx), None)
+        name = chosen["name"] if chosen else f"index={idx}"
+        print(f"[E2] 使用麦克风：index={idx} {name}", file=sys.stderr)
+
+        # 先按目标采样率（16k）打开；设备不支持时回退到其默认采样率。
+        for rate in dict.fromkeys([self.sample_rate,
+                                   chosen["sample_rate"] if chosen else self.sample_rate]):
+            if not rate:
+                continue
+            try:
+                stream = p.open(
+                    format=self._pyaudio.paInt16, channels=1, rate=rate,
+                    input=True, input_device_index=idx,
+                    frames_per_buffer=4000,
+                )
+                return stream, rate, name
+            except Exception:
+                continue
+        raise RuntimeError(
+            f"麦克风 {name} 无法以 16k 或默认采样率打开；"
+            "可在手册支持列表（8K/11.025K/12K/16K/22.05K/24K/44.1K/48K）内调整 --sample-rate"
+        )
 
     def _iter_stream(self, data_iter: Iterable[bytes]) -> Iterator[Utterance]:
         """通用流式识别：data_iter 产出 16k/单声道/16bit 音频块（或 None 切句哨兵）。
@@ -331,33 +434,69 @@ class VoskBackend(RecognizerBackend):
         finally:
             wf.close()
 
-    def _iter_mic(self) -> Iterator[Utterance]:
-        """从麦克风流式识别（PyAudio 提供 16k/单声道/16bit 音频块）。
+    @staticmethod
+    def calibrate_vad_threshold(ambient_rms: List[float], sensitivity: float,
+                                has_grammar: bool = False) -> float:
+        """由环境噪声样本算 VAD 门限（纯逻辑，可单测）。
 
-        内置轻量能量 VAD：
-        - 启动先采集 ~0.5s 环境噪声底，据此设定能量门限；
-        - 仅在检测到语音时才把音频喂给 Vosk，并在句尾静音间隙发出切句哨兵；
-        - 纯静音段不喂给 Vosk，避免把底噪/房间噪声幻觉成中文碎片。
-        配合 grammar 约束，可大幅消除“识别不准确/满屏无关语音”的问题。
+        - 用中位数而非最大值估计噪声底：偶发的一次 cough/碰麦不会抬高门限。
+        - 自由解码（无 grammar）时底噪也可能被 Vosk 幻觉成中文，门限取更保守值；
+          有 grammar 兜底时解码器只认命令短语，可放宽以提升召回。
+        - 设绝对下限，避免安静环境门限过低把电子底噪当语音。
+        """
+        if not ambient_rms:
+            base = 0.0
+        else:
+            ordered = sorted(ambient_rms)
+            mid = len(ordered) // 2
+            base = ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2.0
+        mult = max(1.0, sensitivity) * (0.7 if has_grammar else 1.0)
+        return max(base * mult, 200.0)
+
+    def _iter_mic(self) -> Iterator[Utterance]:
+        """从麦克风流式识别。
+
+        硬件依据（机械臂使用手册 §2.5）：USB 转音频模块支持多采样率与立体声，
+        Atlas DK 另有板载 MIC。本实现：
+        - 优先选 USB 声卡的麦（--mic-index 可覆盖），避开板载 MIC；
+        - 按设备能力开流，必要时重采样到 16k（Vosk 要求）；
+        - 稳健 VAD：中位数噪声底 × 灵敏度门限，自由解码下更保守，
+          把底噪/空调/翻书声挡在 Vosk 之外，减少中文幻觉碎片。
         """
         p = self._pyaudio.PyAudio()
-        stream = p.open(
-            format=self._pyaudio.paInt16,
-            channels=1,
-            rate=self.sample_rate,
-            input=True,
-            frames_per_buffer=4000,
-        )
+        stream, actual_rate, mic_name = self._open_input_stream(p)
         stream.start_stream()
 
-        # 校准环境噪声底
-        noise_blocks = max(1, int(0.5 * self.sample_rate / 4000))
+        need_resample = actual_rate != self.sample_rate
+        if need_resample:
+            try:
+                import audioop
+            except ImportError as e:  # pragma: no cover - Python 3.13+
+                stream.stop_stream(); stream.close(); p.terminate()
+                raise ImportError(
+                    "设备采样率非 16k，重采样需要 audioop（Python ≤3.12 自带）；"
+                    "请换支持 16k 的 USB 声卡，或用 Python 3.11。"
+                ) from e
+            print(f"[E2] 设备采样 {actual_rate}Hz，重采样到 {self.sample_rate}Hz（Vosk 要求）",
+                  file=sys.stderr)
+
+        # 校准环境噪声底：采 ~0.7s，用中位数估计，避免单次碰麦抬高门限。
+        block_ms = 4000.0 / actual_rate * 1000
+        noise_blocks = max(2, int(700 / block_ms))
         ambient = [stream.read(4000, exception_on_overflow=False) for _ in range(noise_blocks)]
-        noise_rms = max((self._frame_rms(b) for b in ambient), default=0.0)
-        # grammar 已保证不会输出噪声乱码，故 VAD 取较灵敏的阈值以提升召回：
-        # 高于噪声底 1.5 倍或最小 200（16bit PCM 范围 ±32767，语音 RMS 通常 >> 此值）。
-        threshold = max(noise_rms * 1.5, 200.0)
-        silence_limit = max(1, int(0.5 * self.sample_rate / 4000))  # 0.5s 静音判定句尾
+        noise_rms = [self._frame_rms(b) for b in ambient]
+        threshold = self.calibrate_vad_threshold(
+            noise_rms, self.vad_sensitivity, has_grammar=bool(self.grammar)
+        )
+        print(f"[E2] 噪声底={max(noise_rms):.0f} VAD门限={threshold:.0f}"
+              f"（灵敏度={self.vad_sensitivity}{'，grammar模式' if self.grammar else ''}）",
+              file=sys.stderr)
+        silence_limit = max(1, int(0.5 * actual_rate / 4000))  # 0.5s 静音判定句尾
+
+        def _to_vosk(data: bytes) -> bytes:
+            if not need_resample:
+                return data
+            return audioop.ratecv(data, 2, 1, actual_rate, self.sample_rate, None)[0]
 
         def _vad_chunks() -> Iterator[Optional[bytes]]:
             speaking = False
@@ -367,11 +506,11 @@ class VoskBackend(RecognizerBackend):
                 if self._frame_rms(data) >= threshold:
                     speaking = True
                     silent = 0
-                    yield data
+                    yield _to_vosk(data)
                 elif speaking:
                     # 句尾拖尾静音也喂给 Vosk 帮助断句，积累到间隙则切句
                     silent += 1
-                    yield data
+                    yield _to_vosk(data)
                     if silent >= silence_limit:
                         yield None  # 触发切句
                         speaking = False

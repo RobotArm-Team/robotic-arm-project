@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from typing import Optional
@@ -76,7 +77,10 @@ def _build_mic_backend(args) -> Optional[RecognizerBackend]:
             be = VoskBackend(
                 model_path=args.vosk_model,
                 min_confidence=args.min_confidence,
+                sample_rate=args.sample_rate,
                 grammar=DEFAULT_GRAMMAR if args.grammar else None,
+                mic_index=args.mic_index,
+                vad_sensitivity=args.vad_sensitivity,
             )
             be.validate()  # 提前校验依赖/模型，缺失时立即报错而非迭代时崩栈
             return be
@@ -116,8 +120,44 @@ def main() -> int:
     ap.add_argument("--min-confidence", type=float, default=0.5,
                     help="置信度门限：低于此值不触发（默认 0.5）")
     ap.add_argument("--cooldown-s", type=float, default=3.0, help="同命令冷却秒数（默认 3.0）")
+    ap.add_argument("--mic-index", type=int, default=None,
+                    help="指定麦克风设备索引（先 --list-mics 查看）。机械臂上有 USB 声卡麦和 DK 板载 MIC 两个源，"
+                         "默认自动优先选 USB 声卡")
+    ap.add_argument("--list-mics", action="store_true",
+                    help="列出所有可录音设备及其采样率后退出（真机上用它确认该选哪个 index）")
+    ap.add_argument("--sample-rate", type=int, default=16000,
+                    help="录音采样率（默认 16000；手册 USB 声卡支持 8K/16K/48K 等，非16k会自动重采样）")
+    ap.add_argument("--vad-sensitivity", type=float, default=2.0,
+                    help="VAD 灵敏度倍数（默认 2.0，越大越不易被噪声误触发；"
+                         "嘈杂环境调高如 3.0，识别不出轻声可调低如 1.5）")
     ap.add_argument("--debug", action="store_true", help="打印每次识别原始文本与置信度")
     args = ap.parse_args()
+
+    if args.list_mics:
+        try:
+            import pyaudio
+        except ImportError:
+            print("[E2] 需要 PyAudio：pip install PyAudio", file=sys.stderr)
+            return 1
+        p = pyaudio.PyAudio()
+        try:
+            devices = VoskBackend.list_input_devices(p)
+            try:
+                default_idx = p.get_default_input_device_info()["index"]
+            except Exception:
+                default_idx = None
+            if not devices:
+                print("[E2] 未找到任何可录音设备", file=sys.stderr)
+                return 1
+            print("[E2] 可录音设备（机械臂上有 USB 声卡麦 + DK 板载 MIC，优先选 USB 声卡）：")
+            for d in devices:
+                mark = " <== 系统默认" if d["index"] == default_idx else ""
+                print(f"  index={d['index']}  {d['name']}  "
+                      f"声道={d['channels']}  采样率={d['sample_rate']}{mark}")
+            print(f"[E2] 建议：python -m voice.app --mic --mic-index <上面的index>")
+        finally:
+            p.terminate()
+        return 0
 
     if args.mic:
         backend = _build_mic_backend(args)
@@ -133,6 +173,7 @@ def main() -> int:
             backend = VoskBackend(
                 model_path=args.vosk_model,
                 min_confidence=args.min_confidence,
+                sample_rate=args.sample_rate,
                 wav_path=args.wav_file,
                 grammar=DEFAULT_GRAMMAR if args.grammar else None,
             )

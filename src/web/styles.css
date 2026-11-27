@@ -1840,3 +1840,82 @@ code {
     padding: 16px;
   }
 }
+
+/* ---------- 手势控制机械臂 ---------- */
+.gesture-control-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.gesture-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gesture-map .gesture-chip {
+  padding: 6px 12px;
+}
+
+.gesture-last {
+  margin-top: 14px;
+  color: var(--muted);
+}
+
+/* ---------- 垃圾分拣 ---------- */
+.vision-result {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.vision-class {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #eef4ff, #ffffff);
+  border: 1px solid #dbe6fb;
+}
+
+.vision-class-label {
+  font-size: 26px;
+  font-weight: 800;
+  color: #2f3a57;
+}
+
+.vision-kv {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.vision-kv div {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f7f9ff;
+  border: 1px dashed #d9e3f7;
+}
+
+.vision-kv dt {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.vision-kv dd {
+  margin: 0;
+  font-weight: 700;
+  color: #2f3a57;
+}
+
+@media (max-width: 720px) {
+  .vision-kv {
+    grid-template-columns: 1fr;
+  }
+}

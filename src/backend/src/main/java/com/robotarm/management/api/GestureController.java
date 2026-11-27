@@ -46,6 +46,17 @@ public class GestureController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(robotAgentClient.gestureStop());
     }
 
+    /** 开启手势 → 机械臂动作联动（会同时开启识别）。 */
+    @PostMapping("/control/start")
+    public ResponseEntity<Map<String, Object>> controlStart() {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(robotAgentClient.gestureControlStart());
+    }
+
+    @PostMapping("/control/stop")
+    public ResponseEntity<Map<String, Object>> controlStop() {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(robotAgentClient.gestureControlStop());
+    }
+
     /** 最新一帧 JPEG；尚未出画面时返回 204，前端保留上一帧。 */
     @GetMapping("/frame")
     public ResponseEntity<byte[]> frame() {
