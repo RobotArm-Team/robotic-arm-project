@@ -52,6 +52,10 @@
         <svg viewBox="0 0 24 24" fill="none"><path d="M7 19h10a3 3 0 0 0 2.9-2.2l1.6-6A3 3 0 0 0 18.6 7H5.4a3 3 0 0 0-2.9 3.8l1.6 6A3 3 0 0 0 7 19Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 7 10.5 4h3L15 7" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 12v3M14 12v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <span>垃圾分拣</span>
       </button>
+      <button class="nav-item" data-view="voice">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span>语音识别</span>
+      </button>
       <button class="nav-item" data-view="tasks">
         <svg viewBox="0 0 24 24" fill="none"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" stroke="currentColor" stroke-width="1.8"/><path d="m10 8.8 5 3.2-5 3.2V8.8Z" fill="currentColor"/></svg>
         <span>任务受理</span>
@@ -482,6 +486,8 @@
           <div class="panel-body">
             <div class="gesture-preview">
               <img id="visionPreview" alt="板子摄像头实时画面" hidden>
+              <canvas id="visionOverlay" class="vision-overlay" aria-hidden="true"></canvas>
+              <span class="vision-count" id="visionCount" hidden></span>
               <p class="gesture-placeholder" id="visionPlaceholder">暂无画面，点击「开启摄像头」后机械臂会下探到观察姿态并显示桌面画面</p>
             </div>
             <div class="form-footer gesture-footer">
@@ -508,6 +514,7 @@
                 <div><dt>识别耗时</dt><dd id="visionInference">—</dd></div>
               </dl>
             </div>
+            <ul class="vision-list" id="visionList"></ul>
             <div class="form-footer">
               <button class="btn primary" type="button" id="visionSortBtn" disabled>分拣该物体</button>
               <button class="btn danger" type="button" id="visionStopBtn">停止当前动作</button>
@@ -525,6 +532,46 @@
           <li>料筐角度配置在板子 <code>robot_agent.py</code> 的 <code>P_BINS</code>，首次使用需按现场位置标定。</li>
           <li>摄像头同一时刻只能被一个功能占用：开启本页摄像头会自动关闭手势识别。</li>
         </ul>
+      </div>
+    </section>
+
+    <section class="view" id="view-voice">
+      <div class="grid grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>语音识别</h3>
+            <span class="badge badge-gesture-stopped" id="voiceStatusBadge">未开启</span>
+          </div>
+          <div class="panel-body">
+            <p class="panel-desc">点击下方按钮开启机械臂 USB 麦克风。任意话语都会实时显示；只有命令词会标记为「命中」。</p>
+            <div class="voice-display">
+              <p class="voice-placeholder" id="voicePlaceholder">尚未开始识别。</p>
+              <p class="voice-text" id="voiceText"></p>
+              <div class="voice-meta">
+                <span class="voice-command" id="voiceCommand">—</span>
+                <span id="voiceConfidence">—</span>
+                <span id="voiceTime">—</span>
+              </div>
+            </div>
+            <div class="form-footer">
+              <button class="btn primary" type="button" id="voiceToggle">开启语音识别</button>
+              <button class="btn voice-hold" type="button" id="voiceHold" disabled>按住说话</button>
+              <span class="form-msg" id="voiceMsg"></span>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h3>最近识别</h3>
+            <span class="hint" id="voiceHistoryCount">0 条</span>
+          </div>
+          <div class="panel-body">
+            <ul class="voice-history" id="voiceHistory">
+              <li class="empty">暂无识别记录。</li>
+            </ul>
+            <p class="panel-desc">命令词：帮我分类 / 开始 / 暂停 / 复位 / 取消 / 急停。识别只用于展示，不会自动触发机械臂动作。</p>
+          </div>
+        </div>
       </div>
     </section>
 

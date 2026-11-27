@@ -7,8 +7,14 @@ const POLL_INTERVAL = 2000;
 const MAX_EVENTS = 100;
 const GESTURE_POLL_INTERVAL = 800;
 const GESTURE_FRAME_INTERVAL = 300;
-const VISION_POLL_INTERVAL = 1000;
+const VISION_POLL_INTERVAL = 500;
 const VISION_FRAME_INTERVAL = 300;
+const VISION_CLASS_COLORS = {
+  recyclable: '#2f9e44',
+  hazardous: '#e03131',
+  kitchen: '#f08c00',
+  other: '#1c7ed6',
+};
 const MAX_GESTURE_HISTORY = 10;
 
 const VIEW_META = {
@@ -18,6 +24,7 @@ const VIEW_META = {
   exceptions: { title: '异常日志', subtitle: '坐标越界、安全拦截与任务失败的可观测记录' },
   robot: { title: '机械臂控制', subtitle: '后端转发到板子 robot_agent，点击按钮即执行真实动作' },
   vision: { title: '垃圾分拣', subtitle: '摄像头识别四类垃圾，确认后由机械臂抓取投放到对应料筐' },
+  voice: { title: '语音识别', subtitle: '机械臂 USB 麦克风离线识别，任意话语实时显示，命令词高亮' },
   gesture: { title: '手势识别', subtitle: '板子摄像头实时识别，画面与手势类别经后端透传' },
   tasks: { title: '任务受理', subtitle: '提交分拣任务、查询结果与软件安全停止' },
 };
@@ -146,6 +153,15 @@ const state = {
     latestTimer: null,
     frameTimer: null,
   },
+  voice: {
+    status: null,
+    message: '',
+    polling: false,
+    actionPending: false,
+    timer: null,
+    holding: false,
+    muteTimer: null,
+  },
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -258,6 +274,37 @@ const api = {
   visionCameraStop: () => api.request('/vision/camera/stop', { method: 'POST' }),
   visionSort: classId => api.request('/vision/sort', { method: 'POST', body: { class_id: classId } }),
   visionFrameUrl: () => `${API_BASE}/vision/frame?t=${Date.now()}`,
+  async voiceRequest(path, { method = 'GET' } = {}) {
+    const options = {
+      method,
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    };
+    if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
+      options.signal = AbortSignal.timeout(6000);
+    }
+    const response = await fetch(`/voice-api${path}`, options);
+    const text = await response.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    if (!response.ok) {
+      const message = data && typeof data === 'object' ? (data.message || data.error) : data;
+      const error = new Error(message || `语音服务请求失败（HTTP ${response.status}）`);
+      error.status = response.status;
+      error.payload = data;
+      throw error;
+    }
+    return data;
+  },
+  voiceStatus: () => api.voiceRequest('/status'),
+  voiceStart: () => api.voiceRequest('/start', { method: 'POST' }),
+  voiceStop: () => api.voiceRequest('/stop', { method: 'POST' }),
+  voiceMute: () => api.voiceRequest('/mute', { method: 'POST' }),
+  voiceUnmute: () => api.voiceRequest('/unmute', { method: 'POST' }),
 };
 
 /* ------------------------------ 渲染 ------------------------------ */
@@ -982,6 +1029,57 @@ function stopGesturePolling() {
 }
 
 /* ------------------------------ 垃圾分拣 ------------------------------ */
+function visionDetections(latest) {
+  const detection = latest && latest.detection ? latest.detection : null;
+  if (!detection) return [];
+  if (Array.isArray(detection.detections)) return detection.detections;
+  return detection.class_id ? [detection] : [];
+}
+
+function drawVisionDetections(detections) {
+  const image = $('#visionPreview');
+  const canvas = $('#visionOverlay');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  if (!image || image.hidden || !image.naturalWidth || !image.naturalHeight) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+  if (canvas.width !== image.naturalWidth) canvas.width = image.naturalWidth;
+  if (canvas.height !== image.naturalHeight) canvas.height = image.naturalHeight;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!Array.isArray(detections) || !detections.length) return;
+
+  const lineWidth = Math.max(2, Math.round(canvas.width / 320));
+  const fontSize = Math.max(12, Math.round(canvas.width / 45));
+  ctx.textBaseline = 'top';
+  ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
+
+  detections.forEach(item => {
+    const bbox = Array.isArray(item.bbox_px) ? item.bbox_px.map(Number) : null;
+    if (!bbox || bbox.length < 4) return;
+    const [x, y, width, height] = bbox;
+    if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return;
+    const color = VISION_CLASS_COLORS[item.class_id] || '#868e96';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.strokeRect(x, y, width, height);
+
+    const confidence = typeof item.confidence === 'number'
+      ? ` ${(item.confidence * 100).toFixed(0)}%`
+      : '';
+    const label = `${classLabel(item.class_id)}${confidence}`;
+    const labelHeight = fontSize + 8;
+    const labelWidth = ctx.measureText(label).width + 10;
+    const labelY = y - labelHeight >= 0 ? y - labelHeight : y;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, labelY, labelWidth, labelHeight);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, x + 5, labelY + 4);
+  });
+}
+
 function renderVision() {
   const vision = state.vision;
   const camera = vision.camera || {};
@@ -1008,7 +1106,17 @@ function renderVision() {
   }
 
   const latest = vision.latest || {};
-  const detection = latest.detection || null;
+  const rawDetection = latest.detection || null;
+  const detections = visionDetections(latest);
+  const detection = detections.length ? rawDetection : null;
+
+  const countEl = $('#visionCount');
+  if (countEl) {
+    countEl.hidden = detections.length === 0;
+    countEl.textContent = detections.length ? `识别到 ${detections.length} 个目标` : '';
+  }
+  drawVisionDetections(detections);
+
   const classEl = $('#visionClass');
   if (classEl) {
     classEl.textContent = detection
@@ -1033,6 +1141,25 @@ function renderVision() {
   const inferenceEl = $('#visionInference');
   if (inferenceEl) inferenceEl.textContent = formatDuration(detection && detection.inference_ms);
 
+  const listEl = $('#visionList');
+  if (listEl) {
+    listEl.innerHTML = detections.length
+      ? detections
+        .slice()
+        .sort((a, b) => (Number(b.confidence) || 0) - (Number(a.confidence) || 0))
+        .map(item => {
+          const color = VISION_CLASS_COLORS[item.class_id] || '#868e96';
+          const confidence = typeof item.confidence === 'number'
+            ? `${(item.confidence * 100).toFixed(1)}%`
+            : '—';
+          return `<li><span class="vision-dot" style="background:${color}"></span>`
+            + `<span class="vision-list-label">${escapeHtml(classLabel(item.class_id))}</span>`
+            + `<span class="vision-list-conf">${confidence}</span></li>`;
+        })
+        .join('')
+      : '';
+  }
+
   const ageEl = $('#visionAge');
   if (ageEl) {
     ageEl.textContent = typeof latest.age_ms === 'number'
@@ -1047,9 +1174,14 @@ function renderVision() {
   }
   const sortHint = $('#visionSortHint');
   if (sortHint) {
-    sortHint.textContent = detection
-      ? `将执行：抓取桌面中央物体并投放到「${classLabel(detection.class_id)}」料筐。`
-      : '等待识别结果；结果超过 3 秒未更新会自动失效。';
+    if (detection) {
+      const prefix = detections.length > 1 ? `画面中有 ${detections.length} 个目标；` : '';
+      sortHint.textContent = `${prefix}将执行：抓取桌面中央物体并投放到「${classLabel(detection.class_id)}」料筐。`;
+    } else {
+      sortHint.textContent = latest.stale
+        ? '目标已离开；结果超过 3 秒未更新会自动失效。'
+        : '等待识别结果；结果超过 3 秒未更新会自动失效。';
+    }
   }
 }
 
@@ -1087,6 +1219,7 @@ async function loadVisionFrame() {
     vision.frameUrl = url;
     const image = $('#visionPreview');
     if (image) {
+      image.onload = () => drawVisionDetections(visionDetections(state.vision.latest));
       image.src = url;
       image.hidden = false;
     }
@@ -1111,6 +1244,18 @@ function clearVisionFrame() {
     image.removeAttribute('src');
     image.hidden = true;
   }
+  const canvas = $('#visionOverlay');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  const countEl = $('#visionCount');
+  if (countEl) {
+    countEl.hidden = true;
+    countEl.textContent = '';
+  }
+  const listEl = $('#visionList');
+  if (listEl) listEl.innerHTML = '';
   const placeholder = $('#visionPlaceholder');
   if (placeholder) placeholder.hidden = false;
 }
@@ -1140,6 +1285,230 @@ function stopVisionPolling() {
     clearInterval(vision.frameTimer);
     vision.frameTimer = null;
   }
+}
+
+/* ------------------------------ 语音识别 ------------------------------ */
+async function refreshVoice() {
+  const voice = state.voice;
+  if (voice.polling) return;
+  voice.polling = true;
+  try {
+    const data = await api.voiceStatus();
+    voice.status = data;
+    voice.message = '';
+  } catch (error) {
+    voice.status = null;
+    voice.message = error.message || '语音服务未连接';
+  } finally {
+    voice.polling = false;
+  }
+  renderVoice();
+}
+
+function voiceStateName(data) {
+  if (!data) return 'disconnected';
+  return data.state || (data.running ? 'listening' : 'stopped');
+}
+
+function renderVoice() {
+  const voice = state.voice;
+  const data = voice.status;
+  const stateName = voiceStateName(data);
+  const running = Boolean(data && (data.running || stateName === 'starting' || stateName === 'listening'));
+  const muted = Boolean(data && data.muted);
+
+  const badge = $('#voiceStatusBadge');
+  if (badge) {
+    const tone = stateName === 'listening'
+      ? 'badge-gesture-running'
+      : stateName === 'starting'
+        ? 'badge-gesture-starting'
+        : 'badge-gesture-stopped';
+    badge.className = `badge ${tone}`;
+    badge.textContent = stateName === 'listening'
+      ? muted ? '待说话' : '正在听'
+      : stateName === 'starting'
+        ? '正在启动'
+        : stateName === 'error'
+          ? '识别异常'
+          : '未开启';
+  }
+
+  const toggle = $('#voiceToggle');
+  if (toggle) {
+    toggle.disabled = voice.actionPending;
+    toggle.textContent = voice.actionPending
+      ? '处理中…'
+      : running ? '关闭语音识别' : '开启语音识别';
+  }
+
+  const hold = $('#voiceHold');
+  if (hold) {
+    const canHold = Boolean(data && stateName === 'listening');
+    hold.disabled = !canHold;
+    hold.textContent = voice.holding ? '正在听…' : '按住说话';
+    hold.classList.toggle('active', Boolean(voice.holding));
+  }
+
+  const latest = data && data.latest ? data.latest : null;
+  const textEl = $('#voiceText');
+  if (textEl) textEl.textContent = latest && latest.text ? latest.text : '';
+
+  const placeholder = $('#voicePlaceholder');
+  if (placeholder) {
+    let message = '尚未开始识别。';
+    if (!data) message = '语音服务未连接，请确认机械臂 5020 端口已启动。';
+    else if (stateName === 'starting') message = '正在加载语音模型（约 6 秒）…';
+    else if (stateName === 'listening') {
+      message = muted
+        ? '已开启语音识别。按住「按住说话」并对着机械臂的 USB 麦克风说话。'
+        : '正在听，请说话…';
+    }
+    else if (stateName === 'error') message = '识别异常，请查看下方错误信息。';
+    placeholder.textContent = message;
+    placeholder.hidden = Boolean(latest && latest.text);
+  }
+
+  const commandEl = $('#voiceCommand');
+  if (commandEl) {
+    if (latest && latest.matched && latest.voice_code) {
+      commandEl.className = 'voice-command matched';
+      commandEl.textContent = `命中：${latest.command || `code ${latest.voice_code}`}（code ${latest.voice_code}）`;
+    } else if (latest && latest.matched) {
+      commandEl.className = 'voice-command matched';
+      commandEl.textContent = '命中命令，解析中…';
+    } else if (latest && latest.text) {
+      commandEl.className = 'voice-command';
+      commandEl.textContent = '未命中命令（只显示，不触发动作）';
+    } else {
+      commandEl.className = 'voice-command';
+      commandEl.textContent = '—';
+    }
+  }
+
+  const confidenceEl = $('#voiceConfidence');
+  if (confidenceEl) {
+    confidenceEl.textContent = latest && typeof latest.confidence === 'number'
+      ? `置信度 ${(latest.confidence * 100).toFixed(0)}%`
+      : '—';
+  }
+  const timeEl = $('#voiceTime');
+  if (timeEl) timeEl.textContent = latest && latest.timestamp ? formatClock(latest.timestamp) : '—';
+
+  const messageEl = $('#voiceMsg');
+  if (messageEl) {
+    messageEl.textContent = (data && data.error) || voice.message || '';
+  }
+
+  const history = data && Array.isArray(data.history) ? data.history : [];
+  const historyEl = $('#voiceHistory');
+  if (historyEl) {
+    historyEl.innerHTML = history.length
+      ? history.map(item => {
+        const time = item.timestamp ? formatClock(item.timestamp) : '';
+        const label = item.matched && item.voice_code
+          ? `<span class="voice-hit">命中 ${escapeHtml(item.command || '')} (${item.voice_code})</span>`
+          : '<span class="voice-miss">未命中</span>';
+        return `<li><span class="voice-history-text">${escapeHtml(item.text || '')}</span>`
+          + `${label}<span class="voice-history-time">${time}</span></li>`;
+      }).join('')
+      : '<li class="empty">暂无识别记录。</li>';
+  }
+  const historyCount = $('#voiceHistoryCount');
+  if (historyCount) historyCount.textContent = `${history.length} 条`;
+}
+
+function startVoicePolling() {
+  stopVoicePolling();
+  refreshVoice();
+  state.voice.timer = setInterval(() => {
+    if (state.view !== 'voice' || !state.autoRefresh || document.hidden) return;
+    refreshVoice();
+  }, 500);
+}
+
+function stopVoicePolling() {
+  if (state.voice.timer) {
+    clearInterval(state.voice.timer);
+    state.voice.timer = null;
+  }
+}
+
+function bindVoiceControls() {
+  const toggle = $('#voiceToggle');
+  if (!toggle) return;
+  toggle.addEventListener('click', async () => {
+    const voice = state.voice;
+    if (voice.actionPending) return;
+    const data = voice.status;
+    const stateName = voiceStateName(data);
+    const running = Boolean(data && (data.running || stateName === 'starting' || stateName === 'listening'));
+    if (voice.muteTimer) {
+      clearTimeout(voice.muteTimer);
+      voice.muteTimer = null;
+    }
+    voice.holding = false;
+    voice.actionPending = true;
+    voice.message = '';
+    renderVoice();
+    try {
+      if (running) await api.voiceStop();
+      else await api.voiceStart();
+    } catch (error) {
+      voice.message = error.message || '语音操作失败';
+    } finally {
+      voice.actionPending = false;
+    }
+    await refreshVoice();
+  });
+
+  const hold = $('#voiceHold');
+  if (!hold) return;
+
+  const startHold = async event => {
+    event.preventDefault();
+    const voice = state.voice;
+    const data = voice.status;
+    if (!data || voiceStateName(data) !== 'listening') return;
+    if (voice.muteTimer) {
+      clearTimeout(voice.muteTimer);
+      voice.muteTimer = null;
+    }
+    if (voice.holding) return;
+    voice.holding = true;
+    voice.message = '';
+    renderVoice();
+    try {
+      await api.voiceUnmute();
+    } catch (error) {
+      voice.message = error.message || '解除静音失败';
+    }
+    await refreshVoice();
+  };
+
+  const endHold = () => {
+    const voice = state.voice;
+    if (!voice.holding) return;
+    voice.holding = false;
+    renderVoice();
+    if (voice.muteTimer) clearTimeout(voice.muteTimer);
+    // 松开后保留 1.5 秒收音，让 VAD 把最后一句切完再静音。
+    voice.muteTimer = setTimeout(async () => {
+      voice.muteTimer = null;
+      try {
+        await api.voiceMute();
+      } catch (error) {
+        voice.message = error.message || '静音失败';
+      }
+      await refreshVoice();
+    }, 1500);
+  };
+
+  hold.addEventListener('pointerdown', startHold);
+  hold.addEventListener('pointerup', endHold);
+  hold.addEventListener('pointercancel', endHold);
+  hold.addEventListener('pointerleave', endHold);
+  window.addEventListener('pointerup', endHold);
 }
 
 function bindVisionControls() {
@@ -1173,7 +1542,9 @@ function bindVisionControls() {
   if (sortBtn) {
     sortBtn.addEventListener('click', async () => {
       const vision = state.vision;
-      const detection = vision.latest && vision.latest.detection;
+      const latest = vision.latest || {};
+      const detections = visionDetections(latest);
+      const detection = detections.length ? latest.detection : null;
       if (!detection || vision.pending) return;
       vision.pending = detection.class_id;
       renderVision();
@@ -1296,6 +1667,12 @@ function switchView(view) {
   } else {
     stopVisionPolling();
   }
+  if (view === 'voice') {
+    renderVoice();
+    startVoicePolling();
+  } else {
+    stopVoicePolling();
+  }
 }
 
 /* ------------------------------ 交互绑定 ------------------------------ */
@@ -1316,10 +1693,13 @@ function bindRefresh() {
       refresh(false);
       if (state.view === 'gesture') startGesturePolling();
       if (state.view === 'vision') startVisionPolling();
+      if (state.view === 'voice') startVoicePolling();
     } else if (state.view === 'gesture') {
       stopGesturePolling();
     } else if (state.view === 'vision') {
       stopVisionPolling();
+    } else if (state.view === 'voice') {
+      stopVoicePolling();
     }
   });
   document.addEventListener('visibilitychange', () => {
@@ -1637,9 +2017,11 @@ function init() {
   bindRobotControls();
   bindGestureControls();
   bindVisionControls();
+  bindVoiceControls();
   renderAll();
   renderGesture();
   renderVision();
+  renderVoice();
   refresh(true);
   startPolling();
 }

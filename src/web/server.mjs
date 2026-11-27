@@ -6,9 +6,10 @@
  * 可选环境变量：
  *   PORT=5173                 前端端口
  *   BACKEND_URL=http://localhost:8080   后端地址
+ *   VOICE_URL=http://192.168.137.100:5020  机械臂语音服务地址
  *
  * 浏览器访问 http://localhost:5173 ，页面内的 /api/v1/* 会被代理到后端，
- * 因此前后端同源，无需在后端增加 CORS 配置。
+ * /voice-api/* 会被代理到机械臂语音服务，因此前后端同源，无需 CORS。
  */
 import http from 'node:http';
 import { createReadStream, promises as fs } from 'node:fs';
@@ -18,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 5173;
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
+const VOICE_URL = process.env.VOICE_URL || 'http://192.168.137.100:5020';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -32,8 +34,11 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
-function proxy(req, res, url) {
-  const target = new URL(url.pathname + url.search, BACKEND_URL);
+function proxy(req, res, url, baseUrl = BACKEND_URL, prefix = '', label = '后端服务') {
+  const pathname = prefix && url.pathname.startsWith(prefix)
+    ? url.pathname.slice(prefix.length) || '/'
+    : url.pathname;
+  const target = new URL(pathname + url.search, baseUrl);
   const proxyReq = http.request(
     target,
     {
@@ -47,8 +52,8 @@ function proxy(req, res, url) {
   );
   proxyReq.on('error', error => {
     const body = JSON.stringify({
-      code: 'BACKEND_UNAVAILABLE',
-      message: `无法连接后端服务（${BACKEND_URL}）：${error.code || error.message || '连接被拒绝'}`,
+      code: 'SERVICE_UNAVAILABLE',
+      message: `无法连接${label}（${baseUrl}）：${error.code || error.message || '连接被拒绝'}`,
     });
     res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(body);
@@ -93,6 +98,10 @@ const server = http.createServer((req, res) => {
     proxy(req, res, url);
     return;
   }
+  if (url.pathname.startsWith('/voice-api/')) {
+    proxy(req, res, url, VOICE_URL, '/voice-api', '语音服务');
+    return;
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Method Not Allowed');
@@ -104,6 +113,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`管理看板已启动：http://localhost:${PORT}`);
   console.log(`接口代理：/api/v1/* -> ${BACKEND_URL}/api/v1/*`);
+  console.log(`语音代理：/voice-api/* -> ${VOICE_URL}/*`);
   console.log('请先启动后端：cd src/backend && .\\mvnw.cmd spring-boot:run');
 });
 
